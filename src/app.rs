@@ -39,7 +39,8 @@ pub enum Event {
     ArtDone,
     Tier { id: String, tier: Tier },
     TierDone,
-    PrefixDetected { id: String, prefix: PathBuf, proton: Option<String> },
+    PrefixDetected { id: String, prefix: PathBuf, proton: Option<String>, force: bool },
+    PrefixMissing(String),
     PrefixScanDone,
     Candidates { id: String, results: Vec<(u32, String)> },
     Size { id: String, bytes: u64 },
@@ -64,6 +65,8 @@ pub struct App {
     pub favorites_only: bool,
     pub sort: Sort,
     pub cursor: usize,
+    /// Solo se resalta el cursor de la rejilla cuando se navega con mando o teclado.
+    pub nav_mode: bool,
     pub columns: usize,
     pub scanning: bool,
     pub prefix_scanning: bool,
@@ -113,6 +116,7 @@ impl App {
             candidates_for: None,
             art_query: String::new(),
             folder_input: String::new(),
+            nav_mode: false,
             confirm_delete: false,
             running: None,
             gamepad: cfg.gamepad_enabled.then(Gamepad::new).flatten(),
@@ -125,8 +129,6 @@ impl App {
                 game.tier = *tier;
             }
         }
-        app.selected = app.library.recent().first().map(|g| g.id.clone());
-
         // Normaliza etiquetas de Proton guardadas con otro formato (p. ej. "11.0-100").
         let protons = app.protons.clone();
         for game in &mut app.library.games {
@@ -215,6 +217,7 @@ impl App {
                         id: game.id,
                         prefix,
                         proton,
+                        force: false,
                     });
                 }
             }
@@ -339,6 +342,30 @@ impl App {
         });
     }
 
+    /// Vuelve a detectar el prefijo pisando el valor actual, aunque exista.
+    pub fn redetect_prefix(&mut self, id: String) {
+        let Some(game) = self.library.get(&id).cloned() else {
+            return;
+        };
+        self.log(format!("Buscando prefijo de {}", game.title));
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            match prefix::detect_for(&game) {
+                Some((prefix, proton)) => {
+                    let _ = tx.send(Event::PrefixDetected {
+                        id: game.id,
+                        prefix,
+                        proton,
+                        force: true,
+                    });
+                }
+                None => {
+                    let _ = tx.send(Event::PrefixMissing(game.id));
+                }
+            }
+        });
+    }
+
     pub fn play(&mut self, id: &str) {
         let Some(game) = self.library.get(id).cloned() else {
             return;
@@ -413,9 +440,6 @@ impl App {
                     self.library.merge(games);
                     self.scanning = false;
                     self.log(format!("Escaneo completado: {found} juegos detectados"));
-                    if self.selected.is_none() {
-                        self.selected = self.library.recent().first().map(|g| g.id.clone());
-                    }
                     self.start_art_fetch(None);
                     self.start_tier_fetch();
                     self.start_prefix_scan();
@@ -450,13 +474,20 @@ impl App {
                     self.candidates_for = Some(id);
                     self.candidates = results;
                 }
-                Event::PrefixDetected { id, prefix, proton } => {
+                Event::PrefixMissing(id) => {
+                    if let Some(game) = self.library.get(&id) {
+                        let title = game.title.clone();
+                        self.toast(format!("Sin prefijo detectado para {title}"));
+                    }
+                }
+                Event::PrefixDetected { id, prefix, proton, force } => {
                     let proton = proton.map(|label| {
                         prefix::best_proton(&self.protons, &label).unwrap_or(label)
                     });
                     let mut updated = false;
                     if let Some(game) = self.library.get_mut(&id) {
-                        if !game.prefix.as_ref().map(|p| p.exists()).unwrap_or(false) {
+                        let exists = game.prefix.as_ref().map(|p| p.exists()).unwrap_or(false);
+                        if force || !exists {
                             game.prefix = Some(prefix);
                             if proton.is_some() {
                                 game.proton = proton;
@@ -582,6 +613,7 @@ impl App {
     }
 
     fn handle_nav(&mut self, nav: Nav) {
+        self.nav_mode = true;
         match nav {
             Nav::Menu => {
                 self.view = match self.view {
@@ -652,6 +684,7 @@ impl App {
                 Action::PickArt { id, sgdb_id } => self.apply_art_pick(id, sgdb_id),
                 Action::ComputeSize(id) => self.compute_size(id),
                 Action::CreatePrefix(id) => self.create_prefix(id),
+                Action::DetectPrefix(id) => self.redetect_prefix(id),
                 Action::Remove(id) => self.remove_game(&id),
                 Action::Favorite(id) => self.toggle_favorite(&id),
                 Action::OpenFolder(id) => {
@@ -686,6 +719,9 @@ impl eframe::App for App {
         // Los resultados de los hilos de trabajo llegan por canal y deben repintar.
         if self.poll_events() | self.textures.poll(ctx) {
             ctx.request_repaint();
+        }
+        if ctx.input(|i| i.pointer.delta() != egui::Vec2::ZERO || i.pointer.any_click()) {
+            self.nav_mode = false;
         }
         self.tick();
         self.handle_input(ctx);

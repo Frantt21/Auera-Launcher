@@ -10,7 +10,6 @@ pub enum Icon {
     Gear,
     Play,
     Star,
-    Plus,
     Close,
     Minimize,
     Maximize,
@@ -66,10 +65,6 @@ pub fn icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32, wid
             poly(&points);
             let first = points[0];
             line(p(first.0, first.1), p(points[points.len() - 1].0, points[points.len() - 1].1));
-        }
-        Icon::Plus => {
-            line(p(0.5, 0.2), p(0.5, 0.8));
-            line(p(0.2, 0.5), p(0.8, 0.5));
         }
         Icon::Close => {
             line(p(0.28, 0.28), p(0.72, 0.72));

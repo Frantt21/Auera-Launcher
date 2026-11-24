@@ -25,7 +25,8 @@ En Linux necesita `pkg-config`, `libudev` (mandos) y las dependencias de ventana
   `/usr/share/steam/compatibilitytools.d`), **detección del prefijo de juegos ya existentes**
   (compatdata de Steam en cualquier biblioteca, `wine-prefixes/<id>` de Hydra, `GamesConfig`
   de Heroic —también para juegos de Epic gestionados por Heroic— o un prefijo Wine junto a la
-  instalación) y creación automática del prefijo cuando falta.
+  instalación), **edición manual de la ruta del prefijo** desde la ficha (con re-detección) y
+  creación automática del prefijo cuando falta.
 - Lanzamiento nativo o vía `proton run` con `STEAM_COMPAT_DATA_PATH` y `WINEPREFIX`.
   En Linux los juegos de Windows se lanzan con Proton; el bloqueo manual por sistema
   se marca por juego desde su ficha.

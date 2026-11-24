@@ -19,6 +19,7 @@ pub enum Action {
     PickArt { id: String, sgdb_id: u32 },
     ComputeSize(String),
     CreatePrefix(String),
+    DetectPrefix(String),
     Remove(String),
     Favorite(String),
     OpenFolder(String),
