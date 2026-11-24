@@ -26,7 +26,9 @@ En Linux necesita `pkg-config`, `libudev` (mandos) y las dependencias de ventana
   (compatdata de Steam en cualquier biblioteca, `wine-prefixes/<id>` de Hydra, `GamesConfig`
   de Heroic —también para juegos de Epic gestionados por Heroic— o un prefijo Wine junto a la
   instalación), **edición manual de la ruta del prefijo** desde la ficha (con re-detección) y
-  creación automática del prefijo cuando falta.
+  creación explícita del prefijo cuando falta. Al lanzar se usa siempre el prefijo configurado
+  —con `~` expandido— y, si no existe, se avisa en vez de crear otro; la capa Proton sale del
+  propio prefijo (`version`/`config_info`) cuando el juego no tiene una elegida.
 - Lanzamiento nativo o vía `proton run` con `STEAM_COMPAT_DATA_PATH` y `WINEPREFIX`.
   En Linux los juegos de Windows se lanzan con Proton; el bloqueo manual por sistema
   se marca por juego desde su ficha.

@@ -367,7 +367,7 @@ impl App {
     }
 
     pub fn play(&mut self, id: &str) {
-        let Some(game) = self.library.get(id).cloned() else {
+        let Some(mut game) = self.library.get(id).cloned() else {
             return;
         };
         if !game.compatible() {
@@ -378,6 +378,38 @@ impl App {
             self.toast("Ya hay un juego en ejecución");
             return;
         }
+
+        // La capa anotada en el prefijo manda si el juego no tiene una elegida.
+        if cfg!(unix) && game.platform == Platform::Windows && game.proton.is_none() {
+            if let Some(prefix) = game.prefix.as_deref() {
+                let compat = prefix::compat_dir(&prefix::expand(&prefix.to_string_lossy()));
+                if let Some(name) = prefix::proton_label(&compat)
+                    .and_then(|label| prefix::best_proton(&self.protons, &label))
+                {
+                    game.proton = Some(name.clone());
+                    if let Some(stored) = self.library.get_mut(id) {
+                        stored.proton = Some(name);
+                    }
+                    self.library.save();
+                }
+            }
+        }
+
+        // Si aún no hay prefijo, se busca uno existente antes de lanzar.
+        if cfg!(unix) && game.platform == Platform::Windows && game.prefix.is_none() {
+            if let Some((prefix, proton)) = prefix::detect_for(&game) {
+                game.prefix = Some(prefix);
+                if let Some(label) = proton {
+                    game.proton = Some(prefix::best_proton(&self.protons, &label).unwrap_or(label));
+                }
+                if let Some(stored) = self.library.get_mut(id) {
+                    stored.prefix = game.prefix.clone();
+                    stored.proton = game.proton.clone();
+                }
+                self.library.save();
+            }
+        }
+
         let plan = match launch::plan(&game, &self.protons) {
             Ok(plan) => plan,
             Err(err) => {

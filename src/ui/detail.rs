@@ -5,6 +5,7 @@ use egui::{vec2, Rect, RichText, ScrollArea, Stroke, Ui, UiBuilder};
 use crate::app::App;
 use crate::i18n::{tr, Txt};
 use crate::model::{Game, Platform, Tier};
+use crate::prefix;
 use crate::theme;
 use crate::ui::{widgets, Action};
 
@@ -260,6 +261,14 @@ fn compat_card(app: &mut App, ui: &mut Ui, game: &mut Game, actions: &mut Vec<Ac
                 if response.changed() {
                     let trimmed = text.trim();
                     game.prefix = (!trimmed.is_empty()).then(|| PathBuf::from(trimmed));
+                }
+                if response.lost_focus() {
+                    if let Some(path) = &game.prefix {
+                        let expanded = prefix::expand(&path.to_string_lossy());
+                        if expanded != *path {
+                            game.prefix = Some(expanded);
+                        }
+                    }
                 }
 
                 let (dot, _) = ui.allocate_exact_size(vec2(10.0, 10.0), egui::Sense::hover());
