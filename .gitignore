@@ -1,0 +1,5 @@
+/target
+*.log
+
+# Configuración y caché local del launcher
+/.auera

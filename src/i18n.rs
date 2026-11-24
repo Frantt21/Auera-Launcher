@@ -1,0 +1,145 @@
+pub use crate::config::Lang;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Txt {
+    // Navegación
+    Library,
+    Settings,
+    Game,
+    Search,
+    Name,
+    // Acciones
+    Play,
+    Scan,
+    Scanning,
+    RefreshArt,
+    SearchArt,
+    ComputeSize,
+    AddFolder,
+    Remove,
+    OpenFolder,
+    // Biblioteca
+    AllSources,
+    AllPlatforms,
+    FavoritesOnly,
+    Recent,
+    NoGames,
+    NoGamesHint,
+    NotCompatible,
+    Compatible,
+    // Campos
+    Source,
+    Platform,
+    Playtime,
+    Size,
+    Prefix,
+    Proton,
+    Tier,
+    Executable,
+    InstalledIn,
+    Windows,
+    Linux,
+    // Ajustes
+    General,
+    Integrations,
+    Language,
+    SteamGridKey,
+    WatchedFolders,
+    ScanSteam,
+    ScanEpic,
+    ScanHeroic,
+    ScanHydra,
+    ScanDesktop,
+    Gamepad,
+    GamepadDetected,
+    GamepadMissing,
+    ProtonDb,
+    SteamGrid,
+    Log,
+    // Varios
+    NoTier,
+    Compatibility,
+    LockPlatform,
+    BlockOnSystem,
+    SgdbNameHint,
+    ConfirmDelete,
+}
+
+pub fn tr(lang: Lang, txt: Txt) -> &'static str {
+    let (es, en) = pair(txt);
+    if lang == Lang::Es {
+        es
+    } else {
+        en
+    }
+}
+
+fn pair(txt: Txt) -> (&'static str, &'static str) {
+    use Txt::*;
+    match txt {
+        Library => ("Biblioteca", "Library"),
+        Settings => ("Ajustes", "Settings"),
+        Game => ("Juego", "Game"),
+        Search => ("Buscar", "Search"),
+        Name => ("Nombre", "Name"),
+        Play => ("Jugar", "Play"),
+        Scan => ("Escanear", "Scan"),
+        Scanning => ("Escaneando…", "Scanning…"),
+        RefreshArt => ("Actualizar arte", "Refresh art"),
+        SearchArt => ("Buscar arte", "Find art"),
+        ComputeSize => ("Calcular tamaño", "Compute size"),
+        AddFolder => ("Añadir carpeta", "Add folder"),
+        Remove => ("Quitar", "Remove"),
+        OpenFolder => ("Abrir carpeta", "Open folder"),
+        AllSources => ("Todos", "All"),
+        AllPlatforms => ("Todas", "All"),
+        FavoritesOnly => ("Favoritos", "Favorites"),
+        Recent => ("Recientes", "Recent"),
+        NoGames => ("Sin juegos todavía", "No games yet"),
+        NoGamesHint => (
+            "Escanea tus launchers o añade carpetas con juegos.",
+            "Scan your launchers or add game folders.",
+        ),
+        NotCompatible => (
+            "No compatible con este sistema",
+            "Not supported on this system",
+        ),
+        Compatible => ("Compatible", "Compatible"),
+        Source => ("Launcher", "Launcher"),
+        Platform => ("Plataforma", "Platform"),
+        Playtime => ("Tiempo jugado", "Playtime"),
+        Size => ("Tamaño", "Size"),
+        Prefix => ("Prefijo", "Prefix"),
+        Proton => ("Proton", "Proton"),
+        Tier => ("ProtonDB", "ProtonDB"),
+        Executable => ("Ejecutable", "Executable"),
+        InstalledIn => ("Instalado en", "Installed in"),
+        Windows => ("Windows", "Windows"),
+        Linux => ("Linux", "Linux"),
+        General => ("General", "General"),
+        Integrations => ("Integraciones", "Integrations"),
+        Language => ("Idioma", "Language"),
+        SteamGridKey => ("Clave de SteamGridDB", "SteamGridDB key"),
+        WatchedFolders => ("Carpetas vigiladas", "Watched folders"),
+        ScanSteam => ("Detectar Steam", "Detect Steam"),
+        ScanEpic => ("Detectar Epic Games", "Detect Epic Games"),
+        ScanHeroic => ("Detectar Heroic", "Detect Heroic"),
+        ScanHydra => ("Detectar Hydra", "Detect Hydra"),
+        ScanDesktop => ("Detectar accesos de Linux", "Detect Linux shortcuts"),
+        Gamepad => ("Mando", "Gamepad"),
+        GamepadDetected => ("Conectado", "Connected"),
+        GamepadMissing => ("No detectado", "Not detected"),
+        ProtonDb => ("ProtonDB", "ProtonDB"),
+        SteamGrid => ("SteamGridDB", "SteamGridDB"),
+        Log => ("Registro", "Log"),
+        NoTier => ("Sin datos", "No data"),
+        Compatibility => ("Compatibilidad", "Compatibility"),
+        LockPlatform => ("Fijar plataforma", "Pin platform"),
+        BlockOnSystem => ("Bloquear en este sistema", "Block on this system"),
+        SgdbNameHint => ("Nombre en SteamGridDB", "Name in SteamGridDB"),
+        ConfirmDelete => (
+            "Se quitará de la biblioteca.",
+            "It will be removed from the library.",
+        ),
+    }
+}
