@@ -154,6 +154,65 @@ fn version_key(name: &str) -> Option<String> {
     None
 }
 
+fn heroic_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(home) = dirs::home_dir() {
+        roots.push(home.join(".config/heroic"));
+        roots.push(home.join(".var/app/com.heroicgameslauncher.hgl/config/heroic"));
+    }
+    roots
+}
+
+/// Prefijo configurado en Heroic para un app id (Epic, GOG, Amazon o sideload).
+pub fn heroic_prefix(app_id: &str) -> Option<(PathBuf, Option<String>)> {
+    for base in heroic_roots() {
+        let file = base.join("GamesConfig").join(format!("{app_id}.json"));
+        let Ok(raw) = std::fs::read_to_string(&file) else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            continue;
+        };
+        let config = value
+            .get(app_id)
+            .and_then(|v| v.as_object())
+            .or_else(|| {
+                value
+                    .as_object()
+                    .and_then(|map| map.values().find_map(|v| v.as_object()))
+            });
+        let Some(config) = config else {
+            continue;
+        };
+        let Some(prefix) = config
+            .get("winePrefix")
+            .and_then(|v| v.as_str())
+            .map(PathBuf::from)
+            .filter(|p| p.is_dir())
+        else {
+            continue;
+        };
+        let proton = config
+            .get("wineVersion")
+            .and_then(|v| v.get("name"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        return Some((prefix, proton));
+    }
+    None
+}
+
+/// Prefijo que Hydra crea en `wine-prefixes/<objectId>`.
+pub fn hydra_prefix(object_id: &str) -> Option<(PathBuf, Option<String>)> {
+    for base in crate::scan::hydra::launcher_dirs() {
+        let prefix = base.join("wine-prefixes").join(object_id);
+        if looks_like_prefix(&prefix) {
+            return Some((prefix.clone(), proton_label(&prefix)));
+        }
+    }
+    None
+}
+
 /// Un prefijo Wine se reconoce por su unidad `drive_c` y sus registros.
 pub fn looks_like_prefix(dir: &Path) -> bool {
     dir.join("drive_c").is_dir() && (dir.join("system.reg").is_file() || dir.join("user.reg").is_file())
@@ -194,6 +253,27 @@ pub fn detect_for(game: &Game) -> Option<(PathBuf, Option<String>)> {
         }
     }
 
+    // Heroic, Epic por Heroic y Hydra guardan el prefijo junto a su app id.
+    if let Some(rest) = game.id.strip_prefix("heroic:") {
+        if let Some((_, app_id)) = rest.split_once(':') {
+            if let Some(found) = heroic_prefix(app_id) {
+                return Some(found);
+            }
+        }
+    }
+    if let Some(app_id) = game.id.strip_prefix("epic:") {
+        if let Some(found) = heroic_prefix(app_id) {
+            return Some(found);
+        }
+    }
+    if let Some(rest) = game.id.strip_prefix("hydra:") {
+        if let Some((_, object_id)) = rest.split_once(':') {
+            if let Some(found) = hydra_prefix(object_id) {
+                return Some(found);
+            }
+        }
+    }
+
     if game.platform != Platform::Windows {
         return None;
     }
@@ -214,6 +294,13 @@ fn find_near(install_dir: &Path) -> Option<PathBuf> {
         let candidate = install_dir.join(name);
         if looks_like_prefix(&candidate) {
             return Some(candidate);
+        }
+    }
+
+    // El ejecutable puede vivir dentro del propio prefijo (Hydra, compatdata).
+    for ancestor in install_dir.ancestors().skip(1).take(4) {
+        if looks_like_prefix(ancestor) {
+            return Some(ancestor.to_path_buf());
         }
     }
 
@@ -323,3 +410,4 @@ pub fn ensure(game: &mut Game, protons: &[Proton]) -> Result<PathBuf, String> {
         Err(err) => Err(format!("No se pudo crear el prefijo: {err}")),
     }
 }
+
