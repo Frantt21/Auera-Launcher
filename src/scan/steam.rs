@@ -92,7 +92,7 @@ fn is_tool(title: &str) -> bool {
 }
 
 /// Todas las bibliotecas declaradas en libraryfolders.vdf más la raíz.
-fn libraries(root: &Path) -> Vec<PathBuf> {
+pub fn libraries(root: &Path) -> Vec<PathBuf> {
     let mut libraries = vec![root.to_path_buf()];
     let vdf_path = root.join("steamapps/libraryfolders.vdf");
     if let Ok(raw) = std::fs::read_to_string(vdf_path) {

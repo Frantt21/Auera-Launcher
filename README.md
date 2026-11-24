@@ -21,8 +21,10 @@ En Linux necesita `pkg-config`, `libudev` (mandos) y las dependencias de ventana
 - Arte desde SteamGridDB (héroe, portada, logo e icono) cacheado en disco y reutilizado
   entre sesiones; el id resuelto de SteamGridDB también se guarda para no repetir la búsqueda.
 - Nivel de compatibilidad de ProtonDB por appid de Steam, con caché local.
-- Gestión de Proton/prefijos Wine: detección de versiones, prefijo por juego y creación
-  automática del prefijo cuando falta.
+- Gestión de Proton/prefijos Wine: detección de versiones (incluidas las del sistema en
+  `/usr/share/steam/compatibilitytools.d`), **detección del prefijo de juegos ya existentes**
+  (compatdata de Steam en cualquier biblioteca o prefijo Wine junto a la instalación) y
+  creación automática del prefijo cuando falta.
 - Lanzamiento nativo o vía `proton run` con `STEAM_COMPAT_DATA_PATH` y `WINEPREFIX`.
   En Linux los juegos de Windows se lanzan con Proton; el bloqueo manual por sistema
   se marca por juego desde su ficha.

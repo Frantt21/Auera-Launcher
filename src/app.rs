@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::process::Child;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
@@ -38,6 +39,8 @@ pub enum Event {
     ArtDone,
     Tier { id: String, tier: Tier },
     TierDone,
+    PrefixDetected { id: String, prefix: PathBuf, proton: Option<String> },
+    PrefixScanDone,
     Candidates { id: String, results: Vec<(u32, String)> },
     Size { id: String, bytes: u64 },
     Prefix { id: String, result: Result<std::path::PathBuf, String> },
@@ -63,6 +66,7 @@ pub struct App {
     pub cursor: usize,
     pub columns: usize,
     pub scanning: bool,
+    pub prefix_scanning: bool,
     pub art_fetching: bool,
     pub tier_fetching: bool,
     pub protons: Vec<Proton>,
@@ -98,9 +102,10 @@ impl App {
             cursor: 0,
             columns: 6,
             scanning: false,
+            prefix_scanning: false,
             art_fetching: false,
             tier_fetching: false,
-            protons: prefix::detect(),
+            protons: prefix::detect_protons(),
             protondb_cache: protondb::load_cache(),
             log: Vec::new(),
             toast: None,
@@ -121,7 +126,19 @@ impl App {
             }
         }
         app.selected = app.library.recent().first().map(|g| g.id.clone());
+
+        // Normaliza etiquetas de Proton guardadas con otro formato (p. ej. "11.0-100").
+        let protons = app.protons.clone();
+        for game in &mut app.library.games {
+            if let Some(label) = game.proton.clone() {
+                if let Some(matched) = prefix::best_proton(&protons, &label) {
+                    game.proton = Some(matched);
+                }
+            }
+        }
+
         app.start_scan();
+        app.start_prefix_scan();
         app
     }
 
@@ -171,6 +188,37 @@ impl App {
         std::thread::spawn(move || {
             let games = scan::scan_all(&cfg);
             let _ = tx.send(Event::Scanned(games));
+        });
+    }
+
+    /// Completa los prefijos de los juegos que ya estaban en la biblioteca.
+    pub fn start_prefix_scan(&mut self) {
+        if self.prefix_scanning {
+            return;
+        }
+        let pending: Vec<Game> = self
+            .library
+            .games
+            .iter()
+            .filter(|game| !game.prefix.as_ref().map(|p| p.exists()).unwrap_or(false))
+            .cloned()
+            .collect();
+        if pending.is_empty() {
+            return;
+        }
+        self.prefix_scanning = true;
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            for game in pending {
+                if let Some((prefix, proton)) = prefix::detect_for(&game) {
+                    let _ = tx.send(Event::PrefixDetected {
+                        id: game.id,
+                        prefix,
+                        proton,
+                    });
+                }
+            }
+            let _ = tx.send(Event::PrefixScanDone);
         });
     }
 
@@ -370,6 +418,7 @@ impl App {
                     }
                     self.start_art_fetch(None);
                     self.start_tier_fetch();
+                    self.start_prefix_scan();
                 }
                 Event::Art { id, art, sgdb_id } => {
                     if let Some(game) = self.library.get_mut(&id) {
@@ -401,6 +450,25 @@ impl App {
                     self.candidates_for = Some(id);
                     self.candidates = results;
                 }
+                Event::PrefixDetected { id, prefix, proton } => {
+                    let proton = proton.map(|label| {
+                        prefix::best_proton(&self.protons, &label).unwrap_or(label)
+                    });
+                    let mut updated = false;
+                    if let Some(game) = self.library.get_mut(&id) {
+                        if !game.prefix.as_ref().map(|p| p.exists()).unwrap_or(false) {
+                            game.prefix = Some(prefix);
+                            if proton.is_some() {
+                                game.proton = proton;
+                            }
+                            updated = true;
+                        }
+                    }
+                    if updated {
+                        self.library.save();
+                    }
+                }
+                Event::PrefixScanDone => self.prefix_scanning = false,
                 Event::Size { id, bytes } => {
                     if let Some(game) = self.library.get_mut(&id) {
                         game.size_bytes = Some(bytes);
