@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use egui::{vec2, Rect, RichText, ScrollArea, Stroke, Ui, UiBuilder};
 
 use crate::app::App;
@@ -72,11 +74,13 @@ pub fn show(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>, id: &str) {
         changed |= stored.platform_locked != game.platform_locked;
         changed |= stored.blocked != game.blocked;
         changed |= stored.proton != game.proton;
+        changed |= stored.prefix != game.prefix;
         stored.title = game.title.clone();
         stored.platform = game.platform;
         stored.platform_locked = game.platform_locked;
         stored.blocked = game.blocked;
         stored.proton = game.proton.clone();
+        stored.prefix = game.prefix.clone();
     }
     if changed {
         app.library.save();
@@ -240,14 +244,42 @@ fn compat_card(app: &mut App, ui: &mut Ui, game: &mut Game, actions: &mut Vec<Ac
                         .size(11.5)
                         .color(theme::MUTED),
                 );
-                let prefix = game
+
+                // Ruta editable: se aplica al escribir y queda guardada en la biblioteca.
+                let mut text = game
                     .prefix
                     .as_ref()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "—".into());
-                ui.label(RichText::new(prefix).size(12.0));
-                if widgets::icon_button(ui, widgets::Icon::Plus, vec2(30.0, 30.0), false).clicked() {
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_default();
+                let response = ui.add(
+                    egui::TextEdit::singleline(&mut text)
+                        .id(egui::Id::new("prefix_path"))
+                        .hint_text("/ruta/al/pfx")
+                        .desired_width(430.0),
+                );
+                if response.changed() {
+                    let trimmed = text.trim();
+                    game.prefix = (!trimmed.is_empty()).then(|| PathBuf::from(trimmed));
+                }
+
+                let (dot, _) = ui.allocate_exact_size(vec2(10.0, 10.0), egui::Sense::hover());
+                let color = match &game.prefix {
+                    Some(path) if path.is_dir() => theme::OK,
+                    Some(_) => theme::DANGER,
+                    None => theme::MUTED,
+                };
+                ui.painter().circle_filled(dot.center(), 4.0, color);
+
+                if widgets::chip(ui, tr(lang, Txt::DetectPrefix), false).clicked() {
+                    actions.push(Action::DetectPrefix(game.id.clone()));
+                }
+                if widgets::chip(ui, tr(lang, Txt::CreatePrefix), false).clicked() {
                     actions.push(Action::CreatePrefix(game.id.clone()));
+                }
+                if game.prefix.is_some()
+                    && widgets::chip(ui, tr(lang, Txt::ClearPrefix), false).clicked()
+                {
+                    game.prefix = None;
                 }
             });
 

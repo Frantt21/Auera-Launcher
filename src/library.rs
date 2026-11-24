@@ -90,10 +90,4 @@ impl Library {
     pub fn count_by_source(&self, source: Source) -> usize {
         self.games.iter().filter(|g| g.source == source).count()
     }
-
-    pub fn recent(&self) -> Vec<&Game> {
-        let mut recent: Vec<&Game> = self.games.iter().filter(|g| g.last_played.is_some()).collect();
-        recent.sort_by_key(|g| std::cmp::Reverse(g.last_played));
-        recent
-    }
 }

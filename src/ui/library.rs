@@ -122,10 +122,7 @@ pub fn show(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                             if response.secondary_clicked() {
                                 actions.push(Action::Favorite(game.id.clone()));
                             }
-                            if response.hovered() {
-                                actions.push(Action::Select(game.id.clone()));
-                            }
-                            if index == app.cursor && app.view == crate::app::View::Library {
+                            if index == app.cursor && app.nav_mode {
                                 let painter = ui.painter();
                                 let rect = response.rect;
                                 painter.add(egui::Shape::convex_polygon(
