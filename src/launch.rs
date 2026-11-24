@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, Command};
 
 use crate::model::{Game, Platform};
@@ -91,11 +91,6 @@ fn native(executable: PathBuf, cwd: PathBuf) -> Result<Plan, String> {
         cwd,
         env: Vec::new(),
     })
-}
-
-pub fn open_in_file_manager(path: &Path) {
-    let program = if cfg!(windows) { "explorer" } else { "xdg-open" };
-    let _ = Command::new(program).arg(path).spawn();
 }
 
 #[cfg(test)]

@@ -12,7 +12,7 @@ pub const DANGER: Color32 = Color32::from_rgb(226, 92, 92);
 pub const OK: Color32 = Color32::from_rgb(112, 200, 140);
 
 pub const RADIUS: f32 = 14.0;
-pub const RAIL_WIDTH: f32 = 78.0;
+pub const RAIL_WIDTH: f32 = 64.0;
 pub const TITLEBAR_HEIGHT: f32 = 40.0;
 
 pub fn apply(ctx: &Context) {
@@ -51,6 +51,18 @@ pub fn apply(ctx: &Context) {
     .into();
 
     ctx.set_style(style);
+}
+
+/// Color de texto legible sobre un fondo dado.
+pub fn on_color(background: Color32) -> Color32 {
+    let luminance = 0.2126 * background.r() as f32
+        + 0.7152 * background.g() as f32
+        + 0.0722 * background.b() as f32;
+    if luminance > 150.0 {
+        ON_ACCENT
+    } else {
+        TEXT
+    }
 }
 
 pub fn tier_color(tier: crate::model::Tier) -> Color32 {

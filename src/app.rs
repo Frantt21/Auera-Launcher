@@ -4,7 +4,7 @@ use std::process::Child;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
-use egui::Context;
+use egui::{pos2, Context, Rect};
 
 use crate::api::{protondb, steamgrid};
 use crate::config::Config;
@@ -45,6 +45,7 @@ pub enum Event {
     Candidates { id: String, results: Vec<(u32, String)> },
     Size { id: String, bytes: u64 },
     Prefix { id: String, result: Result<std::path::PathBuf, String> },
+    Backdrop(String),
 }
 
 struct Running {
@@ -79,6 +80,17 @@ pub struct App {
     pub candidates: Vec<(u32, String)>,
     pub candidates_for: Option<String>,
     pub art_query: String,
+    /// Juego bajo el ratón en la biblioteca, para el fondo animado.
+    pub hover_bg: Option<String>,
+    pub logo: Option<egui::TextureHandle>,
+    pub game_dialog: bool,
+    accents: HashMap<PathBuf, egui::Color32>,
+    backdrop: Option<PathBuf>,
+    backdrop_prev: Option<PathBuf>,
+    backdrop_alpha: f32,
+    backdrop_fade: f32,
+    backdrop_jobs: std::collections::HashSet<String>,
+    backdrop_failed: std::collections::HashSet<String>,
     pub folder_input: String,
     pub confirm_delete: bool,
     running: Option<Running>,
@@ -115,6 +127,16 @@ impl App {
             candidates: Vec::new(),
             candidates_for: None,
             art_query: String::new(),
+            hover_bg: None,
+            logo: logo_texture(&cc.egui_ctx),
+            game_dialog: false,
+            accents: HashMap::new(),
+            backdrop: None,
+            backdrop_prev: None,
+            backdrop_alpha: 0.0,
+            backdrop_fade: 1.0,
+            backdrop_jobs: std::collections::HashSet::new(),
+            backdrop_failed: std::collections::HashSet::new(),
             folder_input: String::new(),
             nav_mode: false,
             confirm_delete: false,
@@ -481,6 +503,9 @@ impl App {
                         for path in game.art.paths() {
                             self.textures.forget(path);
                         }
+                        crate::backdrop::invalidate(&id);
+                        self.textures.forget(&crate::backdrop::cache_path(&id));
+                        self.backdrop_failed.remove(&id);
                         game.art = art;
                         if sgdb_id.is_some() {
                             game.sgdb_id = sgdb_id;
@@ -505,6 +530,12 @@ impl App {
                 Event::Candidates { id, results } => {
                     self.candidates_for = Some(id);
                     self.candidates = results;
+                }
+                Event::Backdrop(id) => {
+                    self.backdrop_jobs.remove(&id);
+                    if !crate::backdrop::cache_path(&id).exists() {
+                        self.backdrop_failed.insert(id);
+                    }
                 }
                 Event::PrefixMissing(id) => {
                     if let Some(game) = self.library.get(&id) {
@@ -642,6 +673,42 @@ impl App {
 
     fn back(&mut self) {
         self.view = View::Library;
+        self.game_dialog = false;
+    }
+
+    /// Color dominante de la carátula, para el botón de play del hover.
+    pub fn cover_accent(&mut self, game: &Game) -> egui::Color32 {
+        let Some(path) = game.art.cover.as_deref() else {
+            return self.accent_for(game);
+        };
+        let key = PathBuf::from(path);
+        if let Some(color) = self.accents.get(&key) {
+            return *color;
+        }
+        let color = accent_from_file(&key).unwrap_or(theme::ACCENT);
+        self.accents.insert(key, color);
+        color
+    }
+
+    /// Color dominante del logo (o la portada) para el botón de jugar.
+    pub fn accent_for(&mut self, game: &Game) -> egui::Color32 {
+        let Some(path) = game.art.logo.as_deref().or(game.art.cover.as_deref()) else {
+            return theme::ACCENT;
+        };
+        let key = PathBuf::from(path);
+        if let Some(color) = self.accents.get(&key) {
+            return *color;
+        }
+        let color = accent_from_file(&key)
+            .or_else(|| {
+                game.art
+                    .cover
+                    .as_deref()
+                    .and_then(|cover| accent_from_file(std::path::Path::new(cover)))
+            })
+            .unwrap_or(theme::ACCENT);
+        self.accents.insert(key, color);
+        color
     }
 
     fn handle_nav(&mut self, nav: Nav) {
@@ -700,6 +767,7 @@ impl App {
                 Action::Open(id) => {
                     self.selected = Some(id.clone());
                     self.view = View::Detail(id);
+                    self.game_dialog = false;
                 }
                 Action::Play(id) => {
                     self.selected = Some(id.clone());
@@ -719,13 +787,143 @@ impl App {
                 Action::DetectPrefix(id) => self.redetect_prefix(id),
                 Action::Remove(id) => self.remove_game(&id),
                 Action::Favorite(id) => self.toggle_favorite(&id),
-                Action::OpenFolder(id) => {
-                    if let Some(game) = self.library.get(&id) {
-                        launch::open_in_file_manager(&game.install_dir);
-                    }
-                }
                 Action::Select(id) => self.selected = Some(id),
             }
+        }
+    }
+
+    /// Fondo del juego con fundido cruzado; se cachea en disco por juego.
+    fn paint_backdrop(&mut self, ctx: &Context) {
+        let game_id = match &self.view {
+            View::Detail(id) => Some(id.clone()),
+            View::Library => self.hover_bg.clone(),
+            View::Settings => None,
+        };
+
+        let mut path = None;
+        if let Some(id) = game_id {
+            if let Some(game) = self.library.get(&id) {
+                let cache = crate::backdrop::cache_path(&game.id);
+                if cache.exists() {
+                    path = Some(cache);
+                } else if let Some(source) = art_path(game) {
+                    path = Some(source.clone());
+                    if !self.backdrop_failed.contains(&game.id)
+                        && self.backdrop_jobs.insert(game.id.clone())
+                    {
+                        let tx = self.tx.clone();
+                        let game_id = game.id.clone();
+                        std::thread::spawn(move || {
+                            crate::backdrop::generate(&game_id, &source);
+                            let _ = tx.send(Event::Backdrop(game_id));
+                        });
+                    }
+                }
+            }
+        }
+
+        // Al cambiar de juego, el anterior se queda hasta terminar el fundido.
+        if let Some(next) = path.clone() {
+            if self.backdrop.as_ref() != Some(&next) {
+                if let Some(previous) = self.backdrop.take() {
+                    self.backdrop_prev = Some(previous);
+                }
+                self.backdrop = Some(next);
+                self.backdrop_fade = 0.0;
+            }
+        }
+
+        let target_alpha = if path.is_some() { 1.0 } else { 0.0 };
+        let dt = ctx.input(|i| i.stable_dt).min(0.1);
+        let mut animating = false;
+        if (self.backdrop_alpha - target_alpha).abs() > f32::EPSILON {
+            let step = dt / 0.28;
+            self.backdrop_alpha = if self.backdrop_alpha < target_alpha {
+                (self.backdrop_alpha + step).min(1.0)
+            } else {
+                (self.backdrop_alpha - step).max(0.0)
+            };
+            animating = true;
+        }
+        if self.backdrop_fade < 1.0 {
+            self.backdrop_fade = (self.backdrop_fade + dt / 0.4).min(1.0);
+            animating = true;
+        } else {
+            self.backdrop_prev = None;
+        }
+        if animating {
+            ctx.request_repaint();
+        }
+
+        if self.backdrop_alpha <= 0.001 {
+            self.backdrop = None;
+            self.backdrop_prev = None;
+            return;
+        }
+
+        let screen = ctx.content_rect();
+        let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+        let radius = if maximized { 0.0 } else { theme::RADIUS };
+        let painter = ctx.layer_painter(egui::LayerId::background());
+        let alpha = self.backdrop_alpha;
+        let fade = self.backdrop_fade;
+
+        let layers = [
+            (self.backdrop_prev.clone(), 1.0 - fade),
+            (self.backdrop.clone(), fade),
+        ];
+        for (layer, weight) in layers {
+            let Some(layer) = layer else { continue };
+            let Some(texture) = self.textures.get(Some(layer.as_path())) else {
+                ctx.request_repaint();
+                continue;
+            };
+            let a = (alpha * weight * 255.0) as u8;
+            if a == 0 {
+                continue;
+            }
+            ui::widgets::texture_rounded_tinted(
+                &painter,
+                screen,
+                radius,
+                texture.handle.id(),
+                texture.size,
+                egui::Color32::from_white_alpha(a),
+            );
+        }
+
+        let corner = egui::CornerRadius::same(radius as u8);
+        if matches!(self.view, View::Library) {
+            painter.rect_filled(
+                screen,
+                corner,
+                egui::Color32::from_black_alpha((alpha * 0.5 * 255.0) as u8),
+            );
+            ui::widgets::gradient_rounded(
+                &painter,
+                Rect::from_min_max(
+                    pos2(screen.min.x, screen.max.y - screen.height() * 0.45),
+                    screen.max,
+                ),
+                radius,
+                egui::Color32::TRANSPARENT,
+                egui::Color32::from_black_alpha((alpha * 0.55 * 255.0) as u8),
+                true,
+            );
+            ui::widgets::gradient_rounded(
+                &painter,
+                Rect::from_min_max(screen.min, pos2(screen.max.x, screen.min.y + 150.0)),
+                radius,
+                egui::Color32::from_black_alpha((alpha * 0.55 * 255.0) as u8),
+                egui::Color32::TRANSPARENT,
+                true,
+            );
+        } else {
+            painter.rect_filled(
+                screen,
+                corner,
+                egui::Color32::from_black_alpha((alpha * 0.16 * 255.0) as u8),
+            );
         }
     }
 
@@ -758,6 +956,7 @@ impl eframe::App for App {
         self.tick();
         self.handle_input(ctx);
         self.paint_background(ctx);
+        self.paint_backdrop(ctx);
 
         ui::titlebar::show(self, ctx);
         ui::rail::show(self, ctx);
@@ -766,10 +965,10 @@ impl eframe::App for App {
         let view = self.view.clone();
         // El contenido vive a la derecha del rail y bajo la titlebar propia.
         let frame = egui::Frame::NONE.inner_margin(egui::Margin {
-            left: (theme::RAIL_WIDTH + 20.0) as i8,
-            right: 20,
-            top: (theme::TITLEBAR_HEIGHT + 14.0) as i8,
-            bottom: 14,
+            left: (theme::RAIL_WIDTH + 40.0) as i8,
+            right: 26,
+            top: (theme::TITLEBAR_HEIGHT + 16.0) as i8,
+            bottom: 22,
         });
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| match view {
             View::Library => ui::library::show(self, ui, &mut actions),
@@ -787,4 +986,62 @@ impl eframe::App for App {
             ctx.request_repaint_after(Duration::from_millis(80));
         }
     }
+}
+
+fn art_path(game: &Game) -> Option<PathBuf> {
+    game.art.hero.clone().or_else(|| game.art.cover.clone())
+}
+
+fn logo_texture(ctx: &Context) -> Option<egui::TextureHandle> {
+    let image = image::load_from_memory(include_bytes!("../assets/icon-normal.png"))
+        .ok()?
+        .to_rgba8();
+    let size = [image.width() as usize, image.height() as usize];
+    let pixels = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
+    Some(ctx.load_texture("app_logo", pixels, egui::TextureOptions::LINEAR))
+}
+
+/// Tono vivo del arte, ignorando transparencias, grises y extremos de brillo.
+fn accent_from_file(path: &std::path::Path) -> Option<egui::Color32> {
+    let image = image::open(path).ok()?.thumbnail(32, 32).to_rgba8();
+    let mut sum = [0f32; 3];
+    let mut weight = 0f32;
+    for pixel in image.pixels() {
+        let [r, g, b, a] = pixel.0;
+        if a < 200 {
+            continue;
+        }
+        let max = r.max(g).max(b) as f32;
+        let min = r.min(g).min(b) as f32;
+        let saturation = (max - min) / max.max(1.0);
+        if saturation < 0.22 || max < 70.0 {
+            continue;
+        }
+        let luminance = 0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32;
+        if luminance > 236.0 {
+            continue;
+        }
+        let w = saturation * (1.0 - ((luminance - 150.0).abs() / 260.0)).clamp(0.25, 1.0);
+        sum[0] += r as f32 * w;
+        sum[1] += g as f32 * w;
+        sum[2] += b as f32 * w;
+        weight += w;
+    }
+    if weight <= 0.0 {
+        return None;
+    }
+    let mut rgb = [sum[0] / weight, sum[1] / weight, sum[2] / weight];
+    // Se sube el brillo si el tono queda apagado, sin destrozar la saturación.
+    let peak = rgb[0].max(rgb[1]).max(rgb[2]);
+    if peak < 110.0 {
+        let gain = 150.0 / peak.max(1.0);
+        for channel in &mut rgb {
+            *channel = (*channel * gain).min(235.0);
+        }
+    }
+    Some(egui::Color32::from_rgb(
+        rgb[0] as u8,
+        rgb[1] as u8,
+        rgb[2] as u8,
+    ))
 }

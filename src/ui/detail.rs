@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use egui::{vec2, Rect, RichText, ScrollArea, Stroke, Ui, UiBuilder};
+use egui::{pos2, vec2, Align2, FontId, Rect, RichText, ScrollArea, Sense, Stroke, Ui, UiBuilder};
 
 use crate::app::App;
 use crate::i18n::{tr, Txt};
@@ -15,68 +15,126 @@ pub fn show(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>, id: &str) {
         actions.push(Action::Back);
         return;
     };
-
     let area = ui.available_rect_before_wrap();
-    let hero = Rect::from_min_size(area.min, vec2(area.width(), 210.0));
-    paint_hero(app, ui, hero, &game);
 
-    // Cabecera sobre el arte
     ui.scope_builder(
-        UiBuilder::new()
-            .max_rect(hero.shrink2(vec2(26.0, 20.0)))
-            .layout(egui::Layout::top_down(egui::Align::Min)),
+        UiBuilder::new().max_rect(Rect::from_min_size(area.min, vec2(40.0, 40.0))),
         |ui| {
-            if widgets::icon_button(ui, widgets::Icon::ChevronLeft, vec2(34.0, 34.0), false).clicked() {
+            if widgets::icon_button(ui, widgets::Icon::ChevronLeft, vec2(36.0, 36.0), false).clicked() {
                 actions.push(Action::Back);
             }
         },
     );
 
-    let title_rect = Rect::from_min_max(
-        egui::pos2(hero.min.x + 44.0, hero.max.y - 84.0),
-        egui::pos2(hero.max.x - 44.0, hero.max.y - 20.0),
-    );
-    ui.scope_builder(UiBuilder::new().max_rect(title_rect), |ui| {
-        ui.label(RichText::new(&game.title).size(34.0).strong());
-        ui.label(
-            RichText::new(format!(
-                "{} · {} · {}",
-                game.source.label(),
-                game.platform.label(lang),
-                if game.compatible() {
-                    tr(lang, Txt::Compatible)
-                } else {
-                    tr(lang, Txt::NotCompatible)
-                }
-            ))
-            .size(12.0)
-            .color(theme::MUTED),
-        );
-    });
+    // Logo del juego a la izquierda, en el centro vertical.
+    let logo_width = 320.0f32.min(area.width() * 0.36);
+    let logo_bottom = match app.textures.get(game.art.logo.as_deref()) {
+        Some(texture) => {
+            let height = (logo_width * texture.size.y / texture.size.x.max(1.0)).min(190.0);
+            let rect = Rect::from_min_size(
+                pos2(area.min.x + 40.0, area.center().y - height - 40.0),
+                vec2(logo_width, height),
+            );
+            // Sombra suave: el logo se lee sobre arte claro sin añadir un panel.
+            ui.painter().image(
+                texture.handle.id(),
+                rect.translate(vec2(2.0, 3.0)),
+                Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+                egui::Color32::from_black_alpha(150),
+            );
+            widgets::texture_rounded(ui.painter(), rect, 4.0, texture.handle.id(), texture.size);
+            rect.max.y
+        }
+        None => {
+            let pos = pos2(area.min.x + 40.0, area.center().y - 80.0);
+            ui.painter().text(
+                pos,
+                Align2::LEFT_CENTER,
+                &game.title,
+                FontId::proportional(40.0),
+                theme::TEXT,
+            );
+            pos.y + 26.0
+        }
+    };
 
-    let body = Rect::from_min_max(egui::pos2(area.min.x, hero.max.y + 16.0), area.max);
-    ui.scope_builder(UiBuilder::new().max_rect(body), |ui| {
-        ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            action_row(app, ui, &game, actions);
-            ui.add_space(6.0);
-            info_card(app, ui, &mut game, actions);
-            ui.add_space(6.0);
-            compat_card(app, ui, &mut game, actions);
-            ui.add_space(6.0);
-            art_card(app, ui, &mut game, actions);
-            ui.add_space(12.0);
-        });
-    });
+    let accent = app.accent_for(&game);
+    let play_rect = Rect::from_min_size(
+        pos2(area.min.x + 40.0, logo_bottom + 22.0),
+        vec2(152.0, 46.0),
+    );
+    let play = ui.interact(play_rect, egui::Id::new("play"), Sense::click());
+    let (fill, text_color) = if !game.compatible() {
+        (theme::SURFACE_HIGH, theme::MUTED)
+    } else if play.hovered() {
+        (lighten(accent, 0.18), theme::on_color(accent))
+    } else {
+        (accent, theme::on_color(accent))
+    };
+    ui.painter().add(egui::Shape::convex_polygon(
+        widgets::rounded_points(play_rect, 23.0),
+        fill,
+        Stroke::NONE,
+    ));
+    ui.painter().text(
+        play_rect.center(),
+        Align2::CENTER_CENTER,
+        tr(lang, Txt::Play),
+        FontId::proportional(15.0),
+        text_color,
+    );
+    if play.clicked() && game.compatible() {
+        actions.push(Action::Play(game.id.clone()));
+    }
+
+    let options_rect = Rect::from_min_size(
+        pos2(play_rect.max.x + 12.0, play_rect.min.y),
+        vec2(46.0, 46.0),
+    );
+    let options = ui.interact(options_rect, egui::Id::new("game_options"), Sense::click());
+    let (bg, border) = if options.hovered() {
+        (
+            egui::Color32::from_white_alpha(30),
+            egui::Color32::from_white_alpha(50),
+        )
+    } else {
+        (
+            egui::Color32::from_black_alpha(130),
+            egui::Color32::from_white_alpha(22),
+        )
+    };
+    ui.painter().add(egui::Shape::convex_polygon(
+        widgets::rounded_points(options_rect, 23.0),
+        bg,
+        Stroke::new(1.0_f32, border),
+    ));
+    widgets::icon(
+        ui.painter(),
+        Rect::from_center_size(options_rect.center(), vec2(20.0, 20.0)),
+        widgets::Icon::Gear,
+        theme::TEXT,
+        1.6,
+    );
+    if options.clicked() {
+        app.game_dialog = true;
+    }
+
+    paint_info_card(ui, app, &game, area);
+    game_dialog(app, ui, &mut game, actions);
 
     let mut changed = false;
     if let Some(stored) = app.library.get_mut(id) {
         changed |= stored.title != game.title;
+        changed |= stored.executable != game.executable;
+        changed |= stored.install_dir != game.install_dir;
         changed |= stored.platform != game.platform;
         changed |= stored.platform_locked != game.platform_locked;
         changed |= stored.blocked != game.blocked;
         changed |= stored.proton != game.proton;
         changed |= stored.prefix != game.prefix;
         stored.title = game.title.clone();
+        stored.executable = game.executable.clone();
+        stored.install_dir = game.install_dir.clone();
         stored.platform = game.platform;
         stored.platform_locked = game.platform_locked;
         stored.blocked = game.blocked;
@@ -88,130 +146,138 @@ pub fn show(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>, id: &str) {
     }
 }
 
-fn paint_hero(app: &mut App, ui: &Ui, rect: Rect, game: &Game) {
+/// Tarjeta inferior derecha con el resumen del juego.
+fn paint_info_card(ui: &Ui, app: &App, game: &Game, area: Rect) {
+    let lang = app.cfg.lang;
+    let size = vec2(256.0, 92.0);
+    let rect = Rect::from_min_size(pos2(area.max.x - size.x, area.max.y - size.y), size);
     let painter = ui.painter();
-    let texture = app
-        .textures
-        .get(game.art.hero.as_deref())
-        .map(|t| (t.handle.id(), t.size));
-    match texture {
-        Some((texture_id, size)) => widgets::texture_rounded(painter, rect, 16.0, texture_id, size),
-        None => {
-            painter.add(egui::Shape::convex_polygon(
-                widgets::rounded_points(rect, 16.0),
-                theme::SURFACE_HIGH,
-                Stroke::NONE,
-            ));
-        }
-    }
-    widgets::gradient(
-        painter,
-        Rect::from_min_max(egui::pos2(rect.min.x, rect.center().y), rect.max),
-        egui::Color32::TRANSPARENT,
-        egui::Color32::from_black_alpha(230),
-        true,
-    );
+    painter.add(egui::Shape::convex_polygon(
+        widgets::rounded_points(rect, 16.0),
+        egui::Color32::from_black_alpha(155),
+        Stroke::new(1.0_f32, egui::Color32::from_white_alpha(18)),
+    ));
 
-    if let Some(texture) = app.textures.get(game.art.logo.as_deref()) {
-        let width = 260.0f32.min(rect.width() * 0.34);
-        let size = vec2(width, width * texture.size.y / texture.size.x.max(1.0));
-        widgets::texture_rounded(
-            painter,
-            Rect::from_min_size(egui::pos2(rect.max.x - width - 34.0, rect.min.y + 24.0), size),
-            4.0,
-            texture.handle.id(),
-            texture.size,
+    let cells = [
+        (tr(lang, Txt::Source), game.source.label().to_string()),
+        (tr(lang, Txt::Size), game.size_label()),
+        (tr(lang, Txt::Playtime), game.playtime_label()),
+        (
+            tr(lang, Txt::Platform),
+            game.platform.label(lang).to_string(),
+        ),
+    ];
+    let column = (rect.width() - 34.0) / 2.0;
+    for (index, (label, value)) in cells.iter().enumerate() {
+        let x = rect.min.x + 16.0 + (index % 2) as f32 * (column + 4.0);
+        let y = rect.min.y + 16.0 + (index / 2) as f32 * 38.0;
+        painter.text(
+            pos2(x, y),
+            Align2::LEFT_TOP,
+            label,
+            FontId::proportional(10.5),
+            theme::MUTED,
+        );
+        painter.text(
+            pos2(x, y + 15.0),
+            Align2::LEFT_TOP,
+            value,
+            FontId::proportional(12.5),
+            theme::TEXT,
         );
     }
 }
 
-fn action_row(app: &mut App, ui: &mut Ui, game: &Game, actions: &mut Vec<Action>) {
+fn game_dialog(app: &mut App, ui: &mut Ui, game: &mut Game, actions: &mut Vec<Action>) {
+    if !app.game_dialog {
+        return;
+    }
     let lang = app.cfg.lang;
-    ui.horizontal(|ui| {
-        if game.compatible() {
-            if widgets::pill(ui, tr(lang, Txt::Play), true, 138.0).clicked() {
-                actions.push(Action::Play(game.id.clone()));
-            }
-        }
-        if widgets::pill(ui, tr(lang, Txt::OpenFolder), false, 132.0).clicked() {
-            actions.push(Action::OpenFolder(game.id.clone()));
-        }
-        if widgets::icon_button(ui, widgets::Icon::Star, vec2(38.0, 38.0), game.favorite).clicked() {
-            actions.push(Action::Favorite(game.id.clone()));
-        }
+    let mut close = false;
 
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if app.confirm_delete {
-                if widgets::pill(ui, tr(lang, Txt::ConfirmDelete), false, 210.0).clicked() {
-                    actions.push(Action::Remove(game.id.clone()));
-                    app.confirm_delete = false;
-                }
-            } else if widgets::icon_button(ui, widgets::Icon::Trash, vec2(38.0, 38.0), false).clicked() {
-                app.confirm_delete = true;
-            }
+    egui::Window::new(tr(lang, Txt::GameOptions))
+        .id(egui::Id::new("game_dialog"))
+        .collapsible(false)
+        .resizable(false)
+        .default_width(650.0)
+        .anchor(Align2::CENTER_CENTER, vec2(0.0, 0.0))
+        .show(ui.ctx(), |ui| {
+            ui.set_width(610.0);
+            ScrollArea::vertical()
+                .max_height(430.0)
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    info_card(app, ui, game, actions);
+                    ui.add_space(6.0);
+                    compat_card(app, ui, game, actions);
+                    ui.add_space(6.0);
+                    art_card(app, ui, game, actions);
+                });
+
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                delete_button(app, ui, game, actions);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if widgets::pill(ui, tr(lang, Txt::Close), true, 112.0).clicked() {
+                        close = true;
+                    }
+                });
+            });
         });
-    });
+
+    if close {
+        app.game_dialog = false;
+    }
 }
 
 fn info_card(app: &mut App, ui: &mut Ui, game: &mut Game, actions: &mut Vec<Action>) {
     let lang = app.cfg.lang;
     widgets::card(ui, |ui| {
         widgets::section_title(ui, tr(lang, Txt::Game));
-        let title_width = (ui.available_width() - 200.0).max(200.0);
         ui.add(
             egui::TextEdit::singleline(&mut game.title)
-                .desired_width(title_width)
-                .font(egui::FontId::proportional(16.0)),
+                .desired_width(ui.available_width())
+                .font(FontId::proportional(16.0)),
         );
-
         ui.add_space(6.0);
-        egui::Grid::new("game_fields")
-            .num_columns(4)
-            .spacing([18.0, 8.0])
+
+        egui::Grid::new("game_paths")
+            .num_columns(2)
+            .spacing([14.0, 8.0])
             .show(ui, |ui| {
-                field(ui, tr(lang, Txt::Source), game.source.label());
-                field(ui, tr(lang, Txt::Playtime), &game.playtime_label());
+                field_label(ui, tr(lang, Txt::Executable));
+                if let Some(path) = path_field(ui, game.executable.as_deref(), "…/juego.exe") {
+                    game.executable = (!path.as_os_str().is_empty()).then_some(path);
+                }
                 ui.end_row();
-                field(ui, tr(lang, Txt::Size), &game.size_label());
-                field(
-                    ui,
-                    tr(lang, Txt::Platform),
-                    game.platform.label(lang),
-                );
+                field_label(ui, tr(lang, Txt::InstalledIn));
+                if let Some(path) = path_field(ui, Some(game.install_dir.as_path()), "…/carpeta del juego") {
+                    if !path.as_os_str().is_empty() {
+                        game.install_dir = path;
+                    }
+                }
                 ui.end_row();
             });
 
+        ui.add_space(6.0);
         ui.horizontal(|ui| {
-            if widgets::chip(ui, tr(lang, Txt::Windows), game.platform == Platform::Windows).clicked() {
+            let windows = game.platform == Platform::Windows;
+            if widgets::chip(ui, tr(lang, Txt::Windows), windows).clicked() {
                 game.platform = Platform::Windows;
-                game.platform_locked = true;
             }
-            if widgets::chip(ui, tr(lang, Txt::Linux), game.platform == Platform::Linux).clicked() {
+            if widgets::chip(ui, tr(lang, Txt::Linux), !windows).clicked() {
                 game.platform = Platform::Linux;
-                game.platform_locked = true;
             }
-            ui.checkbox(&mut game.platform_locked, tr(lang, Txt::LockPlatform));
-            ui.checkbox(&mut game.blocked, tr(lang, Txt::BlockOnSystem));
-            if widgets::pill(ui, tr(lang, Txt::ComputeSize), false, 140.0).clicked() {
+            if widgets::chip(ui, tr(lang, Txt::LockPlatform), game.platform_locked).clicked() {
+                game.platform_locked = !game.platform_locked;
+            }
+            if widgets::chip(ui, tr(lang, Txt::BlockOnSystem), game.blocked).clicked() {
+                game.blocked = !game.blocked;
+            }
+            if widgets::pill(ui, tr(lang, Txt::ComputeSize), false, 158.0).clicked() {
                 actions.push(Action::ComputeSize(game.id.clone()));
             }
         });
-
-        ui.add_space(6.0);
-        egui::Grid::new("game_paths")
-            .num_columns(2)
-            .spacing([18.0, 8.0])
-            .show(ui, |ui| {
-                let executable = game
-                    .executable
-                    .as_ref()
-                    .map(|path| path.display().to_string())
-                    .unwrap_or_else(|| "—".into());
-                field(ui, tr(lang, Txt::Executable), &executable);
-                ui.end_row();
-                field(ui, tr(lang, Txt::InstalledIn), &game.install_dir.display().to_string());
-                ui.end_row();
-            });
     });
 }
 
@@ -240,11 +306,7 @@ fn compat_card(app: &mut App, ui: &mut Ui, game: &mut Game, actions: &mut Vec<Ac
 
         if cfg!(unix) {
             ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(tr(lang, Txt::Prefix))
-                        .size(11.5)
-                        .color(theme::MUTED),
-                );
+                field_label(ui, tr(lang, Txt::Prefix));
 
                 // Ruta editable: se aplica al escribir y queda guardada en la biblioteca.
                 let mut text = game
@@ -256,7 +318,7 @@ fn compat_card(app: &mut App, ui: &mut Ui, game: &mut Game, actions: &mut Vec<Ac
                     egui::TextEdit::singleline(&mut text)
                         .id(egui::Id::new("prefix_path"))
                         .hint_text("/ruta/al/pfx")
-                        .desired_width(430.0),
+                        .desired_width(300.0),
                 );
                 if response.changed() {
                     let trimmed = text.trim();
@@ -271,7 +333,7 @@ fn compat_card(app: &mut App, ui: &mut Ui, game: &mut Game, actions: &mut Vec<Ac
                     }
                 }
 
-                let (dot, _) = ui.allocate_exact_size(vec2(10.0, 10.0), egui::Sense::hover());
+                let (dot, _) = ui.allocate_exact_size(vec2(10.0, 10.0), Sense::hover());
                 let color = match &game.prefix {
                     Some(path) if path.is_dir() => theme::OK,
                     Some(_) => theme::DANGER,
@@ -293,15 +355,8 @@ fn compat_card(app: &mut App, ui: &mut Ui, game: &mut Game, actions: &mut Vec<Ac
             });
 
             ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(tr(lang, Txt::Proton))
-                        .size(11.5)
-                        .color(theme::MUTED),
-                );
-                let current = game
-                    .proton
-                    .clone()
-                    .unwrap_or_else(|| "Auto".to_string());
+                field_label(ui, tr(lang, Txt::Proton));
+                let current = game.proton.clone().unwrap_or_else(|| "Auto".to_string());
                 egui::ComboBox::from_id_salt("proton_select")
                     .selected_text(RichText::new(current).size(12.0))
                     .show_ui(ui, |ui| {
@@ -316,11 +371,7 @@ fn compat_card(app: &mut App, ui: &mut Ui, game: &mut Game, actions: &mut Vec<Ac
                         }
                     });
                 if app.protons.is_empty() {
-                    ui.label(
-                        RichText::new("—")
-                            .size(11.5)
-                            .color(theme::DANGER),
-                    );
+                    ui.label(RichText::new("—").size(11.5).color(theme::DANGER));
                 }
             });
         }
@@ -332,7 +383,7 @@ fn art_card(app: &mut App, ui: &mut Ui, game: &mut Game, actions: &mut Vec<Actio
     widgets::card(ui, |ui| {
         widgets::section_title(ui, tr(lang, Txt::SteamGrid));
         ui.horizontal(|ui| {
-            let cover = Rect::from_min_size(ui.cursor().min, vec2(96.0, 136.0));
+            let cover = Rect::from_min_size(ui.cursor().min, vec2(72.0, 104.0));
             let texture = app
                 .textures
                 .get(game.art.cover.as_deref())
@@ -349,7 +400,7 @@ fn art_card(app: &mut App, ui: &mut Ui, game: &mut Game, actions: &mut Vec<Actio
                     ));
                 }
             }
-            ui.allocate_space(vec2(96.0, 136.0));
+            ui.allocate_space(vec2(72.0, 104.0));
 
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
@@ -357,9 +408,9 @@ fn art_card(app: &mut App, ui: &mut Ui, game: &mut Game, actions: &mut Vec<Actio
                     ui.add(
                         egui::TextEdit::singleline(&mut app.art_query)
                             .hint_text(hint)
-                            .desired_width(240.0),
+                            .desired_width(170.0),
                     );
-                    if widgets::pill(ui, tr(lang, Txt::SearchArt), false, 120.0).clicked() {
+                    if widgets::pill(ui, tr(lang, Txt::SearchArt), false, 104.0).clicked() {
                         let query = if app.art_query.trim().is_empty() {
                             game.title.clone()
                         } else {
@@ -370,7 +421,7 @@ fn art_card(app: &mut App, ui: &mut Ui, game: &mut Game, actions: &mut Vec<Actio
                             query,
                         });
                     }
-                    if widgets::pill(ui, tr(lang, Txt::RefreshArt), false, 148.0).clicked() {
+                    if widgets::pill(ui, tr(lang, Txt::RefreshArt), false, 138.0).clicked() {
                         actions.push(Action::RefreshArt(game.id.clone()));
                     }
                 });
@@ -395,7 +446,43 @@ fn art_card(app: &mut App, ui: &mut Ui, game: &mut Game, actions: &mut Vec<Actio
     });
 }
 
-fn field(ui: &mut Ui, label: &str, value: &str) {
-    ui.label(RichText::new(label).size(11.5).color(theme::MUTED));
-    ui.label(RichText::new(value).size(12.5));
+fn delete_button(app: &mut App, ui: &mut Ui, game: &Game, actions: &mut Vec<Action>) {
+    let lang = app.cfg.lang;
+    if app.confirm_delete {
+        if widgets::pill(ui, tr(lang, Txt::ConfirmDelete), false, 210.0).clicked() {
+            actions.push(Action::Remove(game.id.clone()));
+            app.confirm_delete = false;
+        }
+    } else if widgets::icon_button(ui, widgets::Icon::Trash, vec2(38.0, 38.0), false).clicked() {
+        app.confirm_delete = true;
+    }
+}
+
+/// Campo de ruta; devuelve la ruta nueva cuando se edita o se sale del campo.
+fn path_field(ui: &mut Ui, current: Option<&std::path::Path>, hint: &str) -> Option<PathBuf> {
+    let mut text = current
+        .map(|path| path.display().to_string())
+        .unwrap_or_default();
+    let width = (ui.available_width() - 120.0).max(240.0);
+    let response = ui.add(
+        egui::TextEdit::singleline(&mut text)
+            .hint_text(hint)
+            .desired_width(width),
+    );
+    if response.changed() {
+        return Some(PathBuf::from(text.trim()));
+    }
+    if response.lost_focus() && !text.trim().is_empty() {
+        return Some(prefix::expand(text.trim()));
+    }
+    None
+}
+
+fn field_label(ui: &mut Ui, text: &str) {
+    ui.label(RichText::new(text).size(11.5).color(theme::MUTED));
+}
+
+fn lighten(color: egui::Color32, amount: f32) -> egui::Color32 {
+    let mix = |channel: u8| (channel as f32 + (255.0 - channel as f32) * amount) as u8;
+    egui::Color32::from_rgb(mix(color.r()), mix(color.g()), mix(color.b()))
 }

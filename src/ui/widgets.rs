@@ -12,7 +12,6 @@ pub enum Icon {
     Star,
     Close,
     Minimize,
-    Maximize,
     ChevronLeft,
     Trash,
 }
@@ -72,14 +71,6 @@ pub fn icon(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32, wid
         }
         Icon::Minimize => {
             line(p(0.28, 0.5), p(0.72, 0.5));
-        }
-        Icon::Maximize => {
-            painter.rect_stroke(
-                Rect::from_center_size(rect.center(), Vec2::splat(rect.width() * 0.42)),
-                egui::CornerRadius::same(1),
-                stroke,
-                egui::StrokeKind::Middle,
-            );
         }
         Icon::ChevronLeft => {
             line(p(0.6, 0.24), p(0.36, 0.5));
@@ -146,6 +137,18 @@ pub fn texture_rounded(
     texture: TextureId,
     texture_size: Vec2,
 ) {
+    texture_rounded_tinted(painter, rect, radius, texture, texture_size, Color32::WHITE);
+}
+
+/// Igual que `texture_rounded`, con un tinte (útil para fundidos).
+pub fn texture_rounded_tinted(
+    painter: &egui::Painter,
+    rect: Rect,
+    radius: f32,
+    texture: TextureId,
+    texture_size: Vec2,
+    tint: Color32,
+) {
     if rect.width() < 2.0 || rect.height() < 2.0 {
         return;
     }
@@ -156,7 +159,7 @@ pub fn texture_rounded(
     mesh.vertices.push(Vertex {
         pos: center,
         uv: Pos2::new(uv.center().x, uv.center().y),
-        color: Color32::WHITE,
+        color: tint,
     });
     for point in &points {
         let rel = Vec2::new(
@@ -169,7 +172,7 @@ pub fn texture_rounded(
                 uv.min.x + rel.x * uv.width(),
                 uv.min.y + rel.y * uv.height(),
             ),
-            color: Color32::WHITE,
+            color: tint,
         });
     }
     for index in 0..points.len() {
@@ -208,6 +211,54 @@ pub fn gradient(painter: &egui::Painter, rect: Rect, from: Color32, to: Color32,
     mesh.add_triangle(0, 1, 2);
     mesh.add_triangle(0, 2, 3);
     painter.add(egui::Shape::mesh(mesh));
+}
+
+/// Degradado contenido en un rectángulo redondeado (no deja esquinas cuadradas).
+pub fn gradient_rounded(
+    painter: &egui::Painter,
+    rect: Rect,
+    radius: f32,
+    from: Color32,
+    to: Color32,
+    vertical: bool,
+) {
+    if rect.width() < 2.0 || rect.height() < 2.0 {
+        return;
+    }
+    let points = rounded_points(rect, radius);
+    let mut mesh = Mesh::default();
+    mesh.vertices.push(Vertex {
+        pos: rect.center(),
+        uv: Pos2::ZERO,
+        color: mix(from, to, 0.5),
+    });
+    for point in &points {
+        let t = if vertical {
+            (point.y - rect.min.y) / rect.height()
+        } else {
+            (point.x - rect.min.x) / rect.width()
+        };
+        mesh.vertices.push(Vertex {
+            pos: *point,
+            uv: Pos2::ZERO,
+            color: mix(from, to, t),
+        });
+    }
+    for index in 0..points.len() {
+        mesh.add_triangle(0, index as u32 + 1, ((index + 1) % points.len()) as u32 + 1);
+    }
+    painter.add(egui::Shape::mesh(mesh));
+}
+
+fn mix(from: Color32, to: Color32, t: f32) -> Color32 {
+    let t = t.clamp(0.0, 1.0);
+    let channel = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * t) as u8;
+    Color32::from_rgba_premultiplied(
+        channel(from.r(), to.r()),
+        channel(from.g(), to.g()),
+        channel(from.b(), to.b()),
+        channel(from.a(), to.a()),
+    )
 }
 
 pub fn icon_button(ui: &mut Ui, icon_kind: Icon, size: Vec2, active: bool) -> Response {

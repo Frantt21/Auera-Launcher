@@ -32,8 +32,10 @@ En Linux necesita `pkg-config`, `libudev` (mandos) y las dependencias de ventana
 - Lanzamiento nativo o vía `proton run` con `STEAM_COMPAT_DATA_PATH` y `WINEPREFIX`.
   En Linux los juegos de Windows se lanzan con Proton; el bloqueo manual por sistema
   se marca por juego desde su ficha.
-- Interfaz con titlebar propia, rail lateral, biblioteca con portadas y filtros, ficha de
-  juego y ajustes; español e inglés.
+- Interfaz con titlebar mínima (`_`/`x` en un contenedor arriba a la derecha), rail flotante
+  translúcido con el icono de la app, biblioteca con portadas, filtros y fondo animado del
+  juego bajo el ratón, ficha a pantalla completa con logo y botón en el color del arte, y
+  diálogo de opciones (ejecutable, instalación, compatibilidad y SteamGridDB); español e inglés.
 - Mandos (XInput/DualShock/DualSense) con mapeado fijo para navegación y aceptar/volver.
 
 ## Datos locales
@@ -41,7 +43,8 @@ En Linux necesita `pkg-config`, `libudev` (mandos) y las dependencias de ventana
 - Linux/macOS: `$XDG_CONFIG_HOME/auera` (por defecto `~/.config/auera`).
 - Windows: `%APPDATA%\\auera`.
 
-Contiene `config.json`, `library.json`, `protondb.json` y la caché de arte en `art/`.
+Contiene `config.json`, `library.json`, `protondb.json`, la caché de arte en `art/` y los fondos
+reducidos en `backdrops/` (un JPEG por juego, generado la primera vez y reutilizado entre arranques).
 
 La clave de SteamGridDB se configura en Ajustes → Integraciones y se guarda solo en
 `config.json`. El repositorio incluye una clave de desarrollo como valor inicial.

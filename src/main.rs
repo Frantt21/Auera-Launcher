@@ -2,6 +2,7 @@
 
 mod api;
 mod app;
+mod backdrop;
 mod config;
 mod gamepad;
 mod i18n;
