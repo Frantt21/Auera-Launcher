@@ -214,6 +214,20 @@ pub fn hydra_prefix(object_id: &str) -> Option<(PathBuf, Option<String>)> {
 }
 
 /// Un prefijo Wine se reconoce por su unidad `drive_c` y sus registros.
+/// Acepta rutas escritas a mano con `~` y comillas.
+pub fn expand(text: &str) -> PathBuf {
+    let trimmed = text.trim().trim_matches('"');
+    if trimmed == "~" {
+        return dirs::home_dir().unwrap_or_else(|| PathBuf::from(trimmed));
+    }
+    match trimmed.strip_prefix("~/") {
+        Some(rest) => dirs::home_dir()
+            .map(|home| home.join(rest))
+            .unwrap_or_else(|| PathBuf::from(trimmed)),
+        None => PathBuf::from(trimmed),
+    }
+}
+
 pub fn looks_like_prefix(dir: &Path) -> bool {
     dir.join("drive_c").is_dir() && (dir.join("system.reg").is_file() || dir.join("user.reg").is_file())
 }
@@ -411,3 +425,14 @@ pub fn ensure(game: &mut Game, protons: &[Proton]) -> Result<PathBuf, String> {
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn expande_la_tilde() {
+        let home = dirs::home_dir().expect("home");
+        assert_eq!(super::expand("~/juegos"), home.join("juegos"));
+        assert_eq!(super::expand("  \"~/pfx\" "), home.join("pfx"));
+        assert_eq!(super::expand("/ruta/absoluta"), std::path::PathBuf::from("/ruta/absoluta"));
+    }
+}

@@ -31,26 +31,31 @@ pub fn plan(game: &Game, protons: &[Proton]) -> Result<Plan, String> {
         return native(executable, cwd);
     }
 
-    let proton = protons
-        .iter()
-        .find(|p| Some(&p.name) == game.proton.as_ref())
-        .or_else(|| protons.first())
-        .ok_or("No se encontró Proton instalado")?;
+    let proton = match game.proton.as_ref() {
+        Some(name) => protons
+            .iter()
+            .find(|p| &p.name == name)
+            .ok_or_else(|| format!("El Proton configurado no está instalado: {name}"))?,
+        None => protons.first().ok_or("No se encontró Proton instalado")?,
+    };
 
-    let prefix = game
-        .prefix
-        .clone()
-        .filter(|p| p.exists())
-        .unwrap_or_else(|| prefix::default_prefix(game));
+    // Se usa el prefijo configurado tal cual: nunca se sustituye por otro en silencio.
+    let prefix = match game.prefix.as_deref() {
+        Some(path) => {
+            let path = prefix::expand(&path.to_string_lossy());
+            if !path.is_dir() {
+                return Err(format!("El prefijo no existe: {}", path.display()));
+            }
+            path
+        }
+        None => return Err("El juego no tiene prefijo; créalo en la ficha".into()),
+    };
     let compat = prefix::compat_dir(&prefix);
     let steam_root = proton.steam_root().unwrap_or_default();
 
     Ok(Plan {
         program: proton.script(),
-        args: vec![
-            "run".into(),
-            executable.to_string_lossy().to_string(),
-        ],
+        args: vec!["run".into(), executable.to_string_lossy().to_string()],
         cwd,
         env: vec![
             ("STEAM_COMPAT_CLIENT_INSTALL_PATH".into(), steam_root.to_string_lossy().to_string()),
@@ -91,4 +96,44 @@ fn native(executable: PathBuf, cwd: PathBuf) -> Result<Plan, String> {
 pub fn open_in_file_manager(path: &Path) {
     let program = if cfg!(windows) { "explorer" } else { "xdg-open" };
     let _ = Command::new(program).arg(path).spawn();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::Source;
+
+    fn juego(prefix: Option<&str>) -> Game {
+        let mut game = Game::new(
+            "test".into(),
+            "Test".into(),
+            Source::Manual,
+            PathBuf::from("/tmp"),
+        );
+        game.platform = Platform::Windows;
+        game.executable = Some(PathBuf::from("/bin/true"));
+        game.prefix = prefix.map(PathBuf::from);
+        game
+    }
+
+    #[test]
+    fn el_prefijo_configurado_no_se_sustituye() {
+        let protons = vec![Proton {
+            name: "Proton".into(),
+            dir: PathBuf::from("/tmp"),
+        }];
+        let err = plan(&juego(Some("/tmp/prefijo-que-no-existe")), &protons)
+            .err()
+            .unwrap_or_default();
+        assert!(err.contains("no existe"), "{err}");
+
+        let err = plan(&juego(None), &protons).err().unwrap_or_default();
+        assert!(err.contains("no tiene prefijo"), "{err}");
+
+        let home = dirs::home_dir().expect("home").join("no-existe-aqui");
+        let err = plan(&juego(Some("~/no-existe-aqui")), &protons)
+            .err()
+            .unwrap_or_default();
+        assert!(err.contains(&home.display().to_string()), "{err}");
+    }
 }
