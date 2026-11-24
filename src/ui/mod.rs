@@ -22,6 +22,5 @@ pub enum Action {
     DetectPrefix(String),
     Remove(String),
     Favorite(String),
-    OpenFolder(String),
     Select(String),
 }

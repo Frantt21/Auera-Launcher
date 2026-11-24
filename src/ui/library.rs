@@ -12,6 +12,7 @@ const GAP: f32 = 16.0;
 
 pub fn show(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
     let lang = app.cfg.lang;
+    let mut hovered: Option<String> = None;
     let area = ui.available_rect_before_wrap();
     let header = Rect::from_min_size(area.min, vec2(area.width(), 118.0));
 
@@ -122,6 +123,9 @@ pub fn show(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                             if response.secondary_clicked() {
                                 actions.push(Action::Favorite(game.id.clone()));
                             }
+                            if response.hovered() {
+                                hovered = Some(game.id.clone());
+                            }
                             if index == app.cursor && app.nav_mode {
                                 let painter = ui.painter();
                                 let rect = response.rect;
@@ -137,6 +141,12 @@ pub fn show(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                 }
             });
     });
+
+    // El fondo animado se pinta fuera de este panel en el fotograma siguiente.
+    if app.hover_bg != hovered {
+        app.hover_bg = hovered;
+        ui.ctx().request_repaint();
+    }
 }
 
 fn sort_combo(app: &mut App, ui: &mut Ui, lang: crate::config::Lang) {
@@ -193,6 +203,7 @@ fn card(app: &mut App, ui: &mut Ui, game: &Game, selected: bool) -> egui::Respon
         ));
     }
     if response.hovered() {
+        let accent = app.cover_accent(game);
         widgets::gradient(
             painter,
             Rect::from_min_max(egui::pos2(cover.min.x, cover.center().y), cover.max),
@@ -201,12 +212,12 @@ fn card(app: &mut App, ui: &mut Ui, game: &Game, selected: bool) -> egui::Respon
             true,
         );
         let circle = egui::pos2(cover.center().x, cover.center().y - 10.0);
-        painter.circle_filled(circle, 22.0, theme::ACCENT);
+        painter.circle_filled(circle, 22.0, accent);
         widgets::icon(
             painter,
             Rect::from_center_size(circle, vec2(16.0, 16.0)),
             widgets::Icon::Play,
-            theme::ON_ACCENT,
+            theme::on_color(accent),
             1.0,
         );
         painter.text(
