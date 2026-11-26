@@ -1,13 +1,12 @@
-<script lang="ts">
+<script>
   import { invoke } from "@tauri-apps/api/core";
-  import type { Config, Bootstrap } from "../lib/types";
 
-  export let cfg: Config;
-  export let log: string[] = [];
-  export let busy: { scanning: boolean; art: boolean; tiers: boolean; prefix: boolean } = { scanning: false, art: false, tiers: false, prefix: false };
-  export let onScan: () => void = () => {};
-  export let onFetchArt: () => void = () => {};
-  export let onFetchTiers: () => void = () => {};
+  export let cfg;
+  export let log = [];
+  export let busy = { scanning: false, art: false, tiers: false, prefix: false };
+  export let onScan = () => {};
+  export let onFetchArt = () => {};
+  export let onFetchTiers = () => {};
 
   async function save() {
     await invoke("set_config", { cfg });

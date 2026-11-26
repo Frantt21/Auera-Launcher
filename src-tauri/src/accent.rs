@@ -4,8 +4,8 @@ use std::sync::mpsc::{self, Receiver, Sender};
 
 use serde::{Deserialize, Serialize};
 
-/// Color RGB independiente de la interfaz, para que el núcleo sirva tanto a
-/// egui como al frontend web de Tauri.
+/// Color RGB independiente de la interfaz, para que el núcleo sirva al
+/// frontend web de Tauri.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rgb {
     pub r: u8,

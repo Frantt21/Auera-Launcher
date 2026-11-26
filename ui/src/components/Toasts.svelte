@@ -1,5 +1,5 @@
-<script lang="ts">
-  export let toasts: string[] = [];
+<script>
+  export let toasts = [];
 </script>
 
 <div class="toast-stack">

@@ -1,14 +1,13 @@
-<script lang="ts">
-  import { mediaUrl, rgbToHex } from "../lib/tauri";
-  import type { Game } from "../lib/types";
+<script>
+  import { mediaUrl } from "../lib/tauri";
   import Icon from "./Icon.svelte";
 
-  export let game: Game;
-  export let mediaBase: string;
-  export let accent: string = "#c49cff";
+  export let game;
+  export let mediaBase;
+  export let accent = "#c49cff";
 
-  export let onClick: (g: Game) => void = () => {};
-  export let onFavorite: (g: Game) => void = () => {};
+  export let onClick = () => {};
+  export let onFavorite = () => {};
 
   $: coverUrl = game.art.cover ? mediaUrl(mediaBase, game.art.cover, 336) : null;
 </script>

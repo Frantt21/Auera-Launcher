@@ -1,8 +1,8 @@
-<script lang="ts">
+<script>
   import Icon from "./Icon.svelte";
-  export let view: string;
-  export let onNavigate: (v: string) => void;
-  export let gamepadName: string | null = null;
+  export let view;
+  export let onNavigate;
+  export let gamepadName = null;
 </script>
 
 <div class="rail glass">

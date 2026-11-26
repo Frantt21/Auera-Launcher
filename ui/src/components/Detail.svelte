@@ -1,15 +1,14 @@
-<script lang="ts">
+<script>
   import { invoke } from "@tauri-apps/api/core";
-  import { mediaUrl, rgbToHex, accentInk } from "../lib/tauri";
-  import type { Game, Bootstrap } from "../lib/types";
+  import { mediaUrl, accentInk } from "../lib/tauri";
   import Icon from "./Icon.svelte";
 
-  export let game: Game;
-  export let mediaBase: string = "";
-  export let accent: string = "#c49cff";
-  export let accentRgb: { r: number; g: number; b: number } = { r: 196, g: 156, b: 255 };
-  export let onBack: () => void = () => {};
-  export let onChanged: () => void = () => {};
+  export let game;
+  export let mediaBase = "";
+  export let accent = "#c49cff";
+  export let accentRgb = { r: 196, g: 156, b: 255 };
+  export let onBack = () => {};
+  export let onChanged = () => {};
 
   let busy = false;
   let optionsOpen = false;

@@ -1,4 +1,4 @@
-<script lang="ts">
+<script>
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Icon from "./Icon.svelte";
 

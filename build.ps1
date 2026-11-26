@@ -47,6 +47,11 @@ foreach ($line in $lines) {
     Set-Item -Path "Env:$name" -Value $Matches[2]
 }
 
+# Por defecto se compila el crate de Tauri (la interfaz principal).
+if (-not ($CargoArgs -match '--manifest-path')) {
+    $CargoArgs = @('--manifest-path', 'src-tauri/Cargo.toml') + $CargoArgs
+}
+
 $detalle = if ($CargoArgs.Count) { ' ' + ($CargoArgs -join ' ') } else { '' }
 Write-Host "cargo build$detalle" -ForegroundColor Cyan
 

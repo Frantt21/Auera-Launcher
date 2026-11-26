@@ -1,31 +1,17 @@
-// El backend reutiliza los módulos del núcleo de la app egui mediante `#[path]`.
-// Así ambos binarios comparten escaneo, APIs, modelo y lanzamiento sin duplicar
-// código ni romper la app antigua mientras se porta la interfaz.
-#[path = "../../src/accent.rs"]
+// El núcleo (escaneo, APIs, modelo, prefijos, lanzamiento) vive junto al
+// backend de Tauri; la interfaz principal es Tauri.
 pub mod accent;
-#[path = "../../src/api/mod.rs"]
 pub mod api;
-#[path = "../../src/backdrop.rs"]
 pub mod backdrop;
-#[path = "../../src/config.rs"]
 pub mod config;
-#[path = "../../src/gamepad.rs"]
 pub mod gamepad;
-#[path = "../../src/i18n.rs"]
 pub mod i18n;
-#[path = "../../src/launch.rs"]
 pub mod launch;
-#[path = "../../src/library.rs"]
 pub mod library;
-#[path = "../../src/model.rs"]
 pub mod model;
-#[path = "../../src/prefix.rs"]
 pub mod prefix;
-#[path = "../../src/prefs.rs"]
 pub mod prefs;
-#[path = "../../src/scan/mod.rs"]
 pub mod scan;
-#[path = "../../src/vdf.rs"]
 pub mod vdf;
 
 mod commands;

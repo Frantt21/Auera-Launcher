@@ -1,21 +1,9 @@
 # Auera Launcher
 
-Launcher de juegos offline para Windows y Linux, escrito en Rust con egui.
+Launcher de juegos offline para Windows y Linux. La interfaz principal es Tauri
+(Svelte + Rust); el antiguo frontend egui ya no se usa ni se compila.
 
-## Compilar
-
-```bash
-cargo run            # desarrollo
-cargo run --release  # rendimiento real (decodificar imágenes en dev es ~25× más lento)
-cargo build --release
-```
-
-En Linux necesita `pkg-config`, `libudev` (mandos) y las dependencias de ventana de egui
-(`libxkbcommon`, `libwayland`, o las de X11).
-
-### Interfaz Tauri
-
-La UI nueva vive en `ui/` (Svelte + Vite) y compila dentro de `src-tauri`:
+## Compilar (Tauri)
 
 ```bash
 npm install
@@ -23,13 +11,17 @@ npm run tauri dev     # desarrollo con recarga
 npm run tauri build   # binario final
 ```
 
-Un `cargo build` de `src-tauri` sin más apunta a `http://localhost:1420` (la UI de Vite), así
-que el exe queda en blanco si ese servidor no está corriendo. Para un binario autónomo:
+Un `cargo build` de `src-tauri` sin más apunta a `http://localhost:1420` (la UI de Vite),
+así que el exe queda en blanco si ese servidor no está corriendo. Para un binario autónomo:
 
 ```bash
 npm run build
 powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1 --manifest-path src-tauri/Cargo.toml --features custom-protocol
 ```
+
+También se puede compilar el wrapper de la raíz (`cargo run`), que delega en el crate de Tauri.
+
+En Linux necesita `pkg-config`, `libudev` (mandos) y las dependencias de ventana de Tauri/WebView.
 
 ## Qué incluye
 
