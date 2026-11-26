@@ -4,3 +4,5 @@
 # Configuración y caché local del launcher
 /.auera
 /.github
+/node_modules
+/src-tauri/target
