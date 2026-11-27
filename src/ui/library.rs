@@ -12,7 +12,11 @@ const GAP: f32 = 16.0;
 
 pub fn show(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
     let lang = app.cfg.lang;
+    let accent = app.accent();
     let mut hovered: Option<String> = None;
+    // Sin puntero en la ventana no hay hover: evita que el último se quede
+    // pintado cuando el cursor sale por un borde.
+    let pointer_here = ui.ctx().input(|i| i.pointer.has_pointer());
     let area = ui.available_rect_before_wrap();
     let header = Rect::from_min_size(area.min, vec2(area.width(), 118.0));
 
@@ -25,25 +29,13 @@ pub fn show(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     .size(13.0)
                     .color(theme::MUTED),
             );
-
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if widgets::pill(ui, tr(lang, Txt::Scan), false, 108.0).clicked() {
-                    actions.push(Action::Scan);
-                }
-                let hint = tr(lang, Txt::Search);
-                ui.add(
-                    egui::TextEdit::singleline(&mut app.search)
-                        .hint_text(hint)
-                        .desired_width(230.0),
-                );
-            });
         });
 
         ui.add_space(8.0);
-        ui.horizontal_wrapped(|ui| {
+        ui.horizontal(|ui| {
             // Filtro por launcher
             let all = app.source_filter.is_none();
-            if widgets::chip(ui, tr(lang, Txt::AllSources), all).clicked() {
+            if widgets::chip(ui, tr(lang, Txt::AllSources), all, accent).clicked() {
                 app.source_filter = None;
             }
             for source in Source::ALL {
@@ -51,42 +43,46 @@ pub fn show(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                     continue;
                 }
                 let active = app.source_filter == Some(source);
-                if widgets::chip(ui, source.label(), active).clicked() {
+                if widgets::chip(ui, source.label(), active, accent).clicked() {
                     app.source_filter = Some(source);
                 }
             }
 
-            ui.add_space(6.0);
-            ui.separator();
-            ui.add_space(6.0);
-            if widgets::chip(ui, tr(lang, Txt::AllPlatforms), app.platform_filter.is_none()).clicked() {
+            widgets::divider(ui);
+            if widgets::chip(
+                ui,
+                tr(lang, Txt::AllPlatforms),
+                app.platform_filter.is_none(),
+                accent,
+            )
+            .clicked()
+            {
                 app.platform_filter = None;
             }
             for platform in [Platform::Windows, Platform::Linux] {
                 let active = app.platform_filter == Some(platform);
-                if widgets::chip(ui, platform.label(lang), active).clicked() {
+                if widgets::chip(ui, platform.label(lang), active, accent).clicked() {
                     app.platform_filter = Some(platform);
                 }
             }
 
-            ui.add_space(6.0);
-            ui.separator();
-            ui.add_space(6.0);
-            if widgets::chip(ui, tr(lang, Txt::FavoritesOnly), app.favorites_only).clicked() {
+            widgets::divider(ui);
+            if widgets::chip(ui, tr(lang, Txt::FavoritesOnly), app.favorites_only, accent).clicked()
+            {
                 app.favorites_only = !app.favorites_only;
             }
 
-            ui.add_space(6.0);
-            ui.separator();
-            ui.add_space(6.0);
-            sort_combo(app, ui, lang);
+            widgets::divider(ui);
+            sort_menu(app, ui, lang);
+
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let hint = tr(lang, Txt::Search);
+                widgets::search(ui, &mut app.search, hint, 230.0);
+            });
         });
     });
 
-    let grid = Rect::from_min_max(
-        egui::pos2(area.min.x, header.max.y + 6.0),
-        area.max,
-    );
+    let grid = Rect::from_min_max(egui::pos2(area.min.x, header.max.y + 6.0), area.max);
     ui.scope_builder(UiBuilder::new().max_rect(grid), |ui| {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
@@ -123,7 +119,7 @@ pub fn show(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                             if response.secondary_clicked() {
                                 actions.push(Action::Favorite(game.id.clone()));
                             }
-                            if response.hovered() {
+                            if pointer_here && response.hovered() {
                                 hovered = Some(game.id.clone());
                             }
                             if index == app.cursor && app.nav_mode {
@@ -132,7 +128,7 @@ pub fn show(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
                                 painter.add(egui::Shape::convex_polygon(
                                     widgets::rounded_points(rect, 12.0),
                                     egui::Color32::TRANSPARENT,
-                                    Stroke::new(1.5_f32, theme::ACCENT.gamma_multiply(0.5)),
+                                    Stroke::new(1.5_f32, accent.gamma_multiply(0.5)),
                                 ));
                             }
                         }
@@ -149,28 +145,73 @@ pub fn show(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
     }
 }
 
-fn sort_combo(app: &mut App, ui: &mut Ui, lang: crate::config::Lang) {
+fn sort_menu(app: &mut App, ui: &mut Ui, lang: crate::config::Lang) {
     let label = match app.sort {
         Sort::Name => tr(lang, Txt::Name),
         Sort::Recent => tr(lang, Txt::Recent),
         Sort::Playtime => tr(lang, Txt::Playtime),
         Sort::Size => tr(lang, Txt::Size),
     };
-    egui::ComboBox::from_id_salt("sort")
-        .selected_text(RichText::new(label).size(12.5))
-        .width(150.0)
-        .show_ui(ui, |ui| {
-            ui.selectable_value(&mut app.sort, Sort::Recent, tr(lang, Txt::Recent));
-            ui.selectable_value(&mut app.sort, Sort::Name, tr(lang, Txt::Name));
-            ui.selectable_value(&mut app.sort, Sort::Playtime, tr(lang, Txt::Playtime));
-            ui.selectable_value(&mut app.sort, Sort::Size, tr(lang, Txt::Size));
-        });
+    let probe = Rect::from_min_size(ui.cursor().min, vec2(120.0, 30.0));
+    let tone = widgets::glass_tone(ui.ctx(), probe);
+    let accent = app.accent();
+    let chevron = widgets::Icon::ChevronDown.glyph();
+    let button = widgets::chip_button(&format!("{label}  {chevron}"), false, accent, tone);
+    let _ = egui::containers::menu::MenuButton::from_button(button).ui(ui, |ui| {
+        ui.set_min_width(170.0);
+        ui.spacing_mut().item_spacing.y = 4.0;
+        ui.add_space(2.0);
+        let ink = theme::accent_ink(accent);
+        for (sort, text) in [
+            (Sort::Recent, Txt::Recent),
+            (Sort::Name, Txt::Name),
+            (Sort::Playtime, Txt::Playtime),
+            (Sort::Size, Txt::Size),
+        ] {
+            let selected = app.sort == sort;
+            let (rect, response) = ui.allocate_exact_size(vec2(170.0, 30.0), Sense::click());
+            let fill = if selected {
+                ink.fill
+            } else if response.hovered() {
+                egui::Color32::from_white_alpha(16)
+            } else {
+                egui::Color32::TRANSPARENT
+            };
+            widgets::fill_round(ui.painter(), rect, rect.height() / 2.0, fill);
+            ui.painter().text(
+                egui::pos2(rect.min.x + 12.0, rect.center().y),
+                Align2::LEFT_CENTER,
+                tr(lang, text),
+                FontId::proportional(12.5),
+                if selected { ink.text } else { theme::TEXT },
+            );
+            if response.clicked() {
+                app.sort = sort;
+                ui.close();
+            }
+        }
+        ui.add_space(2.0);
+    });
 }
 
 fn card(app: &mut App, ui: &mut Ui, game: &Game, selected: bool) -> egui::Response {
-    let (rect, response) = ui.allocate_exact_size(vec2(CARD_WIDTH, COVER_HEIGHT + 34.0), Sense::click());
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(CARD_WIDTH, COVER_HEIGHT + 34.0), Sense::click());
     let cover = Rect::from_min_size(rect.min, vec2(CARD_WIDTH, COVER_HEIGHT));
     let painter = ui.painter();
+
+    // Sombra del acento por detrás de la carátula: sustituye al botón de play
+    // del hover y solo se ve el halo que asoma fuera de la portada.
+    if response.hovered() {
+        let accent = app.cover_accent(game);
+        let shadow = egui::epaint::Shadow {
+            offset: [0, 4],
+            blur: 16,
+            spread: 1,
+            color: egui::Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 120),
+        };
+        painter.add(shadow.as_shape(cover, 12.0));
+    }
 
     let texture = app
         .textures
@@ -194,32 +235,20 @@ fn card(app: &mut App, ui: &mut Ui, game: &Game, selected: bool) -> egui::Respon
         }
     }
 
-    // Halo de selección y hover
+    // Halo de selección y hover. El velo va debajo del halo para no taparlo.
+    if response.hovered() {
+        // Velo uniforme, sin degradado: el mismo tono oscuro del cristal. Sobre
+        // la carátula no se puede desenfocar el fondo, así que solo se oscurece.
+        widgets::fill_round(painter, cover, 12.0, theme::GLASS);
+    }
     if selected {
         painter.add(egui::Shape::convex_polygon(
             widgets::rounded_points(cover, 12.0),
             egui::Color32::TRANSPARENT,
-            Stroke::new(2.0_f32, theme::ACCENT),
+            Stroke::new(2.0_f32, app.accent()),
         ));
     }
     if response.hovered() {
-        let accent = app.cover_accent(game);
-        widgets::gradient(
-            painter,
-            Rect::from_min_max(egui::pos2(cover.min.x, cover.center().y), cover.max),
-            egui::Color32::TRANSPARENT,
-            egui::Color32::from_black_alpha(210),
-            true,
-        );
-        let circle = egui::pos2(cover.center().x, cover.center().y - 10.0);
-        painter.circle_filled(circle, 22.0, accent);
-        widgets::icon(
-            painter,
-            Rect::from_center_size(circle, vec2(16.0, 16.0)),
-            widgets::Icon::Play,
-            theme::on_color(accent),
-            1.0,
-        );
         painter.text(
             egui::pos2(cover.min.x + 12.0, cover.max.y - 12.0),
             Align2::LEFT_BOTTOM,
@@ -244,20 +273,30 @@ fn card(app: &mut App, ui: &mut Ui, game: &Game, selected: bool) -> egui::Respon
         Align2::CENTER_CENTER,
         game.platform.label(app.cfg.lang),
         FontId::proportional(9.5),
-        if game.compatible() { theme::TEXT } else { theme::DANGER },
+        if game.compatible() {
+            theme::TEXT
+        } else {
+            theme::DANGER
+        },
     );
 
     if game.tier != Tier::Unknown {
         let color = theme::tier_color(game.tier);
-        painter.circle_filled(egui::pos2(cover.max.x - 15.0, cover.min.y + 16.0), 4.5, color);
+        painter.circle_filled(
+            egui::pos2(cover.max.x - 15.0, cover.min.y + 16.0),
+            4.5,
+            color,
+        );
     }
     if game.favorite {
         widgets::icon(
             painter,
-            Rect::from_min_size(egui::pos2(cover.max.x - 30.0, cover.max.y - 30.0), vec2(16.0, 16.0)),
+            Rect::from_min_size(
+                egui::pos2(cover.max.x - 30.0, cover.max.y - 30.0),
+                vec2(16.0, 16.0),
+            ),
             widgets::Icon::Star,
             theme::ACCENT,
-            1.3,
         );
     }
 

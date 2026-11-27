@@ -24,8 +24,14 @@ impl Plan {
 
 /// Construye el comando de arranque, usando Proton para juegos de Windows en Linux.
 pub fn plan(game: &Game, protons: &[Proton]) -> Result<Plan, String> {
-    let executable = game.executable.clone().ok_or("El juego no tiene ejecutable")?;
-    let cwd = executable.parent().unwrap_or(&game.install_dir).to_path_buf();
+    let executable = game
+        .executable
+        .clone()
+        .ok_or("El juego no tiene ejecutable")?;
+    let cwd = executable
+        .parent()
+        .unwrap_or(&game.install_dir)
+        .to_path_buf();
 
     if cfg!(windows) || game.platform == Platform::Linux {
         return native(executable, cwd);
@@ -58,8 +64,14 @@ pub fn plan(game: &Game, protons: &[Proton]) -> Result<Plan, String> {
         args: vec!["run".into(), executable.to_string_lossy().to_string()],
         cwd,
         env: vec![
-            ("STEAM_COMPAT_CLIENT_INSTALL_PATH".into(), steam_root.to_string_lossy().to_string()),
-            ("STEAM_COMPAT_DATA_PATH".into(), compat.to_string_lossy().to_string()),
+            (
+                "STEAM_COMPAT_CLIENT_INSTALL_PATH".into(),
+                steam_root.to_string_lossy().to_string(),
+            ),
+            (
+                "STEAM_COMPAT_DATA_PATH".into(),
+                compat.to_string_lossy().to_string(),
+            ),
             ("WINEPREFIX".into(), prefix.to_string_lossy().to_string()),
             ("WINEDEBUG".into(), "-all".into()),
         ],

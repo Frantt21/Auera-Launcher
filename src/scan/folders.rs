@@ -14,7 +14,11 @@ pub fn scan(folders: &[PathBuf], out: &mut Vec<Game>) {
             if !dir.is_dir() {
                 continue;
             }
-            let title = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let title = dir
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             if title.starts_with('.') {
                 continue;
             }
@@ -27,7 +31,11 @@ pub fn scan(folders: &[PathBuf], out: &mut Vec<Game>) {
 
         // Juego suelto en la raíz de la carpeta vigilada.
         if let Some(executable) = find_executable_at_root(folder) {
-            let title = folder.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let title = folder
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             out.push(build(folder, &title, executable));
         }
     }

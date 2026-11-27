@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod accent;
 mod api;
 mod app;
 mod backdrop;
@@ -10,6 +11,7 @@ mod launch;
 mod library;
 mod model;
 mod prefix;
+mod prefs;
 mod scan;
 mod theme;
 mod ui;

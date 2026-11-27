@@ -101,7 +101,10 @@ pub fn find_executable(dir: &Path, hints: &[String]) -> Option<PathBuf> {
     for path in candidates {
         let stem = normalize(&path.file_stem().unwrap_or_default().to_string_lossy());
         let name = normalize(&path.file_name().unwrap_or_default().to_string_lossy());
-        if SKIP_EXES.iter().any(|skip| stem.starts_with(skip) || name.contains(skip)) {
+        if SKIP_EXES
+            .iter()
+            .any(|skip| stem.starts_with(skip) || name.contains(skip))
+        {
             continue;
         }
         let mut score = 0i32;
@@ -146,7 +149,10 @@ fn collect_executables(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
             }
             continue;
         }
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default();
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or_default();
         if matches!(ext, "exe" | "sh" | "appimage" | "AppImage") && is_runnable(&path, ext) {
             out.push(path);
         }

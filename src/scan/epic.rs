@@ -39,13 +39,9 @@ pub fn scan(out: &mut Vec<Game>) {
 fn manifest_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Ok(program_data) = std::env::var("ProgramData") {
-        dirs.push(
-            PathBuf::from(program_data).join("Epic/EpicGamesLauncher/Data/Manifests"),
-        );
+        dirs.push(PathBuf::from(program_data).join("Epic/EpicGamesLauncher/Data/Manifests"));
     }
-    dirs.push(
-        home_dir().join(".local/share/Epic/EpicGamesLauncher/Data/Manifests"),
-    );
+    dirs.push(home_dir().join(".local/share/Epic/EpicGamesLauncher/Data/Manifests"));
     dirs
 }
 

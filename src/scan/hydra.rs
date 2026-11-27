@@ -16,7 +16,10 @@ pub fn scan(out: &mut Vec<Game>) {
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default();
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or_default();
             if !matches!(ext, "ldb" | "log") {
                 continue;
             }
@@ -58,7 +61,8 @@ fn read_games(bytes: &[u8]) -> Vec<Game> {
             continue;
         }
         for (index, _) in chunk.match_indices('{') {
-            let mut stream = serde_json::Deserializer::from_str(&chunk[index..]).into_iter::<Value>();
+            let mut stream =
+                serde_json::Deserializer::from_str(&chunk[index..]).into_iter::<Value>();
             if let Some(Ok(value)) = stream.next() {
                 if let Some(game) = to_game(&value) {
                     games.push(game);

@@ -9,6 +9,7 @@ const PAD: f32 = 14.0;
 
 /// Rail flotante y translúcido, con el icono de la app y navegación sin etiquetas.
 pub fn show(app: &mut App, ctx: &Context) {
+    let accent = app.accent();
     let screen = ctx.content_rect();
     let top = theme::TITLEBAR_HEIGHT + 10.0;
     let rect = Rect::from_min_size(
@@ -24,14 +25,17 @@ pub fn show(app: &mut App, ctx: &Context) {
             ui.set_height(rect.height());
             let painter = ui.painter_at(rect);
 
-            painter.add(egui::Shape::convex_polygon(
-                widgets::rounded_points(rect, 22.0),
-                egui::Color32::from_black_alpha(122),
-                Stroke::new(1.0_f32, egui::Color32::from_white_alpha(16)),
-            ));
+            // Sobre un fondo claro el panel pasa a negro para no perder el
+            // contraste de los iconos blancos.
+            let tone = widgets::glass_tone(ctx, rect);
+            widgets::glass_panel_toned(ui, rect, 22.0, tone);
+            let ink = theme::accent_ink(accent);
 
             if let Some(logo) = &app.logo {
-                let logo_rect = Rect::from_center_size(pos2(rect.center().x, rect.min.y + 36.0), vec2(34.0, 34.0));
+                let logo_rect = Rect::from_center_size(
+                    pos2(rect.center().x, rect.min.y + 36.0),
+                    vec2(34.0, 34.0),
+                );
                 widgets::texture_rounded(&painter, logo_rect, 11.0, logo.id(), logo.size_vec2());
             }
 
@@ -51,7 +55,7 @@ pub fn show(app: &mut App, ctx: &Context) {
                 if active {
                     painter.add(egui::Shape::convex_polygon(
                         widgets::rounded_points(item, 14.0),
-                        theme::ACCENT,
+                        ink.fill,
                         Stroke::NONE,
                     ));
                 } else if response.hovered() {
@@ -66,8 +70,7 @@ pub fn show(app: &mut App, ctx: &Context) {
                     ui.painter(),
                     Rect::from_center_size(item.center(), vec2(20.0, 20.0)),
                     icon,
-                    if active { theme::ON_ACCENT } else { theme::MUTED },
-                    1.6,
+                    if active { ink.icon } else { theme::TEXT },
                 );
 
                 let response = response.on_hover_text(app.t(label));

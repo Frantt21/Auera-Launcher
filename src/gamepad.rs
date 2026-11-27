@@ -1,8 +1,10 @@
 use std::time::{Duration, Instant};
 
 use gilrs::{Axis, Button, EventType, Gilrs};
+use serde::Serialize;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Nav {
     Up,
     Down,
@@ -76,7 +78,13 @@ impl Gamepad {
             Axis::LeftStickY => (Nav::Down, Nav::Up, &mut self.stick_y),
             _ => return,
         };
-        let nav = if value > PRESS { Some(positive) } else if value < -PRESS { Some(negative) } else { None };
+        let nav = if value > PRESS {
+            Some(positive)
+        } else if value < -PRESS {
+            Some(negative)
+        } else {
+            None
+        };
         match nav {
             Some(nav) if !*state => {
                 *state = true;

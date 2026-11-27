@@ -134,7 +134,12 @@ fn playtime_map(root: &Path) -> HashMap<u32, u64> {
         let Some(store) = node.map("UserLocalConfigStore") else {
             continue;
         };
-        let Some(apps) = store.map("Software").and_then(|s| s.map("Valve")).and_then(|v| v.map("Steam")).and_then(|s| s.map("apps")) else {
+        let Some(apps) = store
+            .map("Software")
+            .and_then(|s| s.map("Valve"))
+            .and_then(|v| v.map("Steam"))
+            .and_then(|s| s.map("apps"))
+        else {
             continue;
         };
         for (app_id, app) in apps.iter() {

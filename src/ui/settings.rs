@@ -10,23 +10,25 @@ pub fn show(app: &mut App, ui: &mut Ui, actions: &mut Vec<Action>) {
     let lang = app.cfg.lang;
     let area = ui.available_rect_before_wrap();
     ui.scope_builder(UiBuilder::new().max_rect(area), |ui| {
-        ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            ui.label(RichText::new(tr(lang, Txt::Settings)).size(30.0).strong());
-            ui.add_space(6.0);
+        ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.label(RichText::new(tr(lang, Txt::Settings)).size(30.0).strong());
+                ui.add_space(6.0);
 
-            general(app, ui, lang);
-            ui.add_space(6.0);
-            launchers(app, ui, lang, actions);
-            ui.add_space(6.0);
-            watched_folders(app, ui, lang);
-            ui.add_space(6.0);
-            integrations(app, ui, lang, actions);
-            ui.add_space(6.0);
-            system(app, ui, lang);
-            ui.add_space(6.0);
-            log(app, ui, lang);
-            ui.add_space(12.0);
-        });
+                general(app, ui, lang);
+                ui.add_space(6.0);
+                launchers(app, ui, lang, actions);
+                ui.add_space(6.0);
+                watched_folders(app, ui, lang);
+                ui.add_space(6.0);
+                integrations(app, ui, lang, actions);
+                ui.add_space(6.0);
+                system(app, ui, lang);
+                ui.add_space(6.0);
+                log(app, ui, lang);
+                ui.add_space(12.0);
+            });
     });
 }
 
@@ -35,11 +37,11 @@ fn general(app: &mut App, ui: &mut Ui, lang: Lang) {
         widgets::section_title(ui, tr(lang, Txt::General));
         ui.horizontal(|ui| {
             ui.label(RichText::new(tr(lang, Txt::Language)).size(12.5));
-            if widgets::chip(ui, "Español", app.cfg.lang == Lang::Es).clicked() {
+            if widgets::chip(ui, "Español", app.cfg.lang == Lang::Es, app.accent()).clicked() {
                 app.cfg.lang = Lang::Es;
                 app.cfg.save();
             }
-            if widgets::chip(ui, "English", app.cfg.lang == Lang::En).clicked() {
+            if widgets::chip(ui, "English", app.cfg.lang == Lang::En, app.accent()).clicked() {
                 app.cfg.lang = Lang::En;
                 app.cfg.save();
             }
@@ -57,7 +59,11 @@ fn general(app: &mut App, ui: &mut Ui, lang: Lang) {
         ui.label(
             RichText::new(status)
                 .size(11.5)
-                .color(if app.gamepad_name().is_some() { theme::OK } else { theme::MUTED }),
+                .color(if app.gamepad_name().is_some() {
+                    theme::OK
+                } else {
+                    theme::MUTED
+                }),
         );
     });
 }
@@ -72,7 +78,7 @@ fn launchers(app: &mut App, ui: &mut Ui, lang: Lang, actions: &mut Vec<Action>) 
                 } else {
                     tr(lang, Txt::Scan)
                 };
-                if widgets::pill(ui, label, false, 118.0).clicked() && !app.scanning {
+                if widgets::pill(ui, label, false, 118.0, app.accent()).clicked() && !app.scanning {
                     actions.push(Action::Scan);
                 }
             });
@@ -103,7 +109,10 @@ fn watched_folders(app: &mut App, ui: &mut Ui, lang: Lang) {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(folder.display().to_string()).size(12.0));
                 if ui
-                    .add(egui::Button::new(RichText::new(tr(lang, Txt::Remove)).size(11.0)).frame(false))
+                    .add(
+                        egui::Button::new(RichText::new(tr(lang, Txt::Remove)).size(11.0))
+                            .frame(false),
+                    )
                     .clicked()
                 {
                     app.cfg.watched_folders.retain(|f| f != folder);
@@ -117,7 +126,7 @@ fn watched_folders(app: &mut App, ui: &mut Ui, lang: Lang) {
                     .hint_text("/home/usuario/Juegos")
                     .desired_width(320.0),
             );
-            if widgets::pill(ui, tr(lang, Txt::AddFolder), false, 132.0).clicked() {
+            if widgets::pill(ui, tr(lang, Txt::AddFolder), false, 132.0, app.accent()).clicked() {
                 let path = std::path::PathBuf::from(app.folder_input.trim());
                 if path.is_dir() && !app.cfg.watched_folders.contains(&path) {
                     app.cfg.watched_folders.push(path);
@@ -147,7 +156,7 @@ fn integrations(app: &mut App, ui: &mut Ui, lang: Lang, actions: &mut Vec<Action
         dirty |= ui
             .checkbox(&mut app.cfg.protondb_enabled, tr(lang, Txt::ProtonDb))
             .changed();
-        if widgets::pill(ui, tr(lang, Txt::RefreshArt), false, 150.0).clicked() {
+        if widgets::pill(ui, tr(lang, Txt::RefreshArt), false, 150.0, app.accent()).clicked() {
             actions.push(Action::FetchArt);
         }
         if dirty {
@@ -167,9 +176,13 @@ fn system(app: &mut App, ui: &mut Ui, lang: Lang) {
         }
         ui.add_space(8.0);
         ui.label(
-            RichText::new(format!("{}: {}", tr(lang, Txt::Platform), if cfg!(windows) { "Windows" } else { "Linux" }))
-                .size(11.5)
-                .color(theme::MUTED),
+            RichText::new(format!(
+                "{}: {}",
+                tr(lang, Txt::Platform),
+                if cfg!(windows) { "Windows" } else { "Linux" }
+            ))
+            .size(11.5)
+            .color(theme::MUTED),
         );
         ui.label(
             RichText::new(crate::config::data_dir().display().to_string())
@@ -191,8 +204,21 @@ fn log(app: &mut App, ui: &mut Ui, lang: Lang) {
                 .max_height(160.0)
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
-                    for line in app.log.iter().rev().take(60).collect::<Vec<_>>().into_iter().rev() {
-                        ui.label(RichText::new(line).monospace().size(11.0).color(theme::MUTED));
+                    for line in app
+                        .log
+                        .iter()
+                        .rev()
+                        .take(60)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                    {
+                        ui.label(
+                            RichText::new(line)
+                                .monospace()
+                                .size(11.0)
+                                .color(theme::MUTED),
+                        );
                     }
                 });
         });

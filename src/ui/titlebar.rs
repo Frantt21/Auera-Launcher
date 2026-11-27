@@ -36,18 +36,8 @@ pub fn show(_app: &mut App, ctx: &Context) {
                 pos2(rect.max.x - CLUSTER.x / 2.0 - 14.0, rect.center().y),
                 CLUSTER,
             );
-            ui.painter().add(egui::Shape::convex_polygon(
-                widgets::rounded_points(cluster, 9.0),
-                egui::Color32::from_black_alpha(120),
-                Stroke::new(1.0_f32, egui::Color32::from_white_alpha(18)),
-            ));
-            ui.painter().line_segment(
-                [
-                    pos2(cluster.center().x, cluster.min.y + 6.0),
-                    pos2(cluster.center().x, cluster.max.y - 6.0),
-                ],
-                Stroke::new(1.0_f32, egui::Color32::from_white_alpha(20)),
-            );
+            let tone = widgets::glass_tone(ctx, cluster);
+            widgets::glass_panel_toned(ui, cluster, 9.0, tone);
 
             let buttons = [
                 (
@@ -72,25 +62,24 @@ pub fn show(_app: &mut App, ctx: &Context) {
                     } else {
                         egui::Color32::from_white_alpha(18)
                     };
+                    // Mismo radio que el contenedor para que el relleno del
+                    // hover no asome por las esquinas redondeadas.
+                    let radii = if danger {
+                        [0.0, 9.0, 9.0, 0.0]
+                    } else {
+                        [9.0, 0.0, 0.0, 9.0]
+                    };
                     ui.painter().add(egui::Shape::convex_polygon(
-                        widgets::rounded_points(area.shrink(2.0), 8.0),
+                        widgets::rounded_points_with(area, radii),
                         color,
                         Stroke::NONE,
                     ));
                 }
-                let color = if danger && active {
-                    theme::TEXT
-                } else if active {
-                    theme::TEXT
-                } else {
-                    theme::MUTED
-                };
                 widgets::icon(
                     ui.painter(),
                     Rect::from_center_size(area.center(), vec2(11.0, 11.0)),
                     icon,
-                    color,
-                    1.4,
+                    theme::TEXT,
                 );
                 if response.clicked() {
                     match id {
@@ -99,5 +88,16 @@ pub fn show(_app: &mut App, ctx: &Context) {
                     }
                 }
             }
+
+            // El borde y el separador se pintan al final para que el hover del
+            // cierre o de minimizar no los tape.
+            widgets::hairline_round(ui.painter(), cluster, 9.0);
+            ui.painter().line_segment(
+                [
+                    pos2(cluster.center().x, cluster.min.y + 6.0),
+                    pos2(cluster.center().x, cluster.max.y - 6.0),
+                ],
+                Stroke::new(1.0_f32, egui::Color32::from_white_alpha(20)),
+            );
         });
 }

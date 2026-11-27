@@ -6,3 +6,5 @@
 /.github
 /node_modules
 /src-tauri/target
+/src-tauri/icons
+/ui/dist/assets

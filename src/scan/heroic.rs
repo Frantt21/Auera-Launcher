@@ -125,4 +125,3 @@ fn string_at(value: &Value, keys: &[&str]) -> Option<String> {
 fn path_at(value: &Value, keys: &[&str]) -> Option<PathBuf> {
     string_at(value, keys).map(PathBuf::from)
 }
-

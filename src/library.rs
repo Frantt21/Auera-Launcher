@@ -82,7 +82,8 @@ impl Library {
                 }
             }
         }
-        self.games.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+        self.games
+            .sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
         self.save();
         added
     }

@@ -29,7 +29,10 @@ fn read_entry(path: &std::path::Path) -> Option<Game> {
     let raw = std::fs::read_to_string(path).ok()?;
     let fields = parse_desktop(&raw);
 
-    let categories = fields.get("Categories").map(String::as_str).unwrap_or_default();
+    let categories = fields
+        .get("Categories")
+        .map(String::as_str)
+        .unwrap_or_default();
     if !categories.split(';').any(|c| c == "Game") || fields.contains_key("NoDisplay") {
         return None;
     }
@@ -45,17 +48,23 @@ fn read_entry(path: &std::path::Path) -> Option<Game> {
     }
 
     let install_dir = executable.parent()?.to_path_buf();
-    let title = fields
-        .get("Name")
-        .cloned()
-        .unwrap_or_else(|| executable.file_stem().unwrap_or_default().to_string_lossy().into());
+    let title = fields.get("Name").cloned().unwrap_or_else(|| {
+        executable
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into()
+    });
     // Los propios launchers también publican accesos .desktop.
     if is_launcher(&title, &executable) {
         return None;
     }
 
     let mut game = Game::new(
-        format!("desktop:{}", normalize(&format!("{title}{}", install_dir.display()))),
+        format!(
+            "desktop:{}",
+            normalize(&format!("{title}{}", install_dir.display()))
+        ),
         title,
         Source::Desktop,
         install_dir,
@@ -66,14 +75,18 @@ fn read_entry(path: &std::path::Path) -> Option<Game> {
 }
 
 fn is_launcher(title: &str, executable: &std::path::Path) -> bool {
-    const LAUNCHERS: [&str; 7] = ["steam", "heroic", "lutris", "bottles", "hydra", "playnite", "itgm"];
+    const LAUNCHERS: [&str; 7] = [
+        "steam", "heroic", "lutris", "bottles", "hydra", "playnite", "itgm",
+    ];
     let name = title.to_lowercase();
     let binary = executable
         .file_stem()
         .unwrap_or_default()
         .to_string_lossy()
         .to_lowercase();
-    LAUNCHERS.iter().any(|launcher| name.contains(launcher) || binary.contains(launcher))
+    LAUNCHERS
+        .iter()
+        .any(|launcher| name.contains(launcher) || binary.contains(launcher))
 }
 
 fn parse_desktop(raw: &str) -> HashMap<String, String> {
@@ -84,7 +97,9 @@ fn parse_desktop(raw: &str) -> HashMap<String, String> {
             continue;
         }
         if let Some((key, value)) = line.split_once('=') {
-            fields.entry(key.trim().to_string()).or_insert_with(|| value.trim().to_string());
+            fields
+                .entry(key.trim().to_string())
+                .or_insert_with(|| value.trim().to_string());
         }
     }
     fields

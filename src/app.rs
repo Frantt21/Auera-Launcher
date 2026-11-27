@@ -1,19 +1,21 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
-use egui::{pos2, Context, Rect};
+use egui::Context;
 
+use crate::accent::Accents;
 use crate::api::{protondb, steamgrid};
 use crate::config::Config;
 use crate::gamepad::{Gamepad, Nav};
 use crate::i18n::{tr, Txt};
-use crate::library::Library;
 use crate::launch;
+use crate::library::Library;
 use crate::model::{unix_now, Art, Game, Platform, Source, Tier};
 use crate::prefix::{self, Proton};
+use crate::prefs::Prefs;
 use crate::scan;
 use crate::theme;
 use crate::ui::{self, Action, Textures};
@@ -25,26 +27,41 @@ pub enum View {
     Settings,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Sort {
-    Name,
-    Recent,
-    Playtime,
-    Size,
-}
+pub use crate::prefs::Sort;
 
 pub enum Event {
     Scanned(Vec<Game>),
-    Art { id: String, art: Art, sgdb_id: Option<u32> },
+    Art {
+        id: String,
+        art: Art,
+        sgdb_id: Option<u32>,
+    },
     ArtDone,
-    Tier { id: String, tier: Tier },
+    Tier {
+        id: String,
+        tier: Tier,
+    },
     TierDone,
-    PrefixDetected { id: String, prefix: PathBuf, proton: Option<String>, force: bool },
+    PrefixDetected {
+        id: String,
+        prefix: PathBuf,
+        proton: Option<String>,
+        force: bool,
+    },
     PrefixMissing(String),
     PrefixScanDone,
-    Candidates { id: String, results: Vec<(u32, String)> },
-    Size { id: String, bytes: u64 },
-    Prefix { id: String, result: Result<std::path::PathBuf, String> },
+    Candidates {
+        id: String,
+        results: Vec<(u32, String)>,
+    },
+    Size {
+        id: String,
+        bytes: u64,
+    },
+    Prefix {
+        id: String,
+        result: Result<std::path::PathBuf, String>,
+    },
     Backdrop(String),
 }
 
@@ -84,13 +101,21 @@ pub struct App {
     pub hover_bg: Option<String>,
     pub logo: Option<egui::TextureHandle>,
     pub game_dialog: bool,
-    accents: HashMap<PathBuf, egui::Color32>,
+    accents: Accents,
+    accent: egui::Color32,
+    accent_from: egui::Color32,
+    accent_goal: egui::Color32,
+    accent_t: f32,
+    prefs: Prefs,
     backdrop: Option<PathBuf>,
     backdrop_prev: Option<PathBuf>,
     backdrop_alpha: f32,
     backdrop_fade: f32,
     backdrop_jobs: std::collections::HashSet<String>,
     backdrop_failed: std::collections::HashSet<String>,
+    glass: Option<ui::textures::Texture>,
+    glass_for: Option<PathBuf>,
+    glass_prev: Option<ui::textures::Texture>,
     pub folder_input: String,
     pub confirm_delete: bool,
     running: Option<Running>,
@@ -102,18 +127,20 @@ pub struct App {
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         theme::apply(&cc.egui_ctx);
+        egui_material_icons::initialize(&cc.egui_ctx);
         let (tx, rx) = mpsc::channel();
         let cfg = Config::load();
+        let prefs = Prefs::load();
         let mut app = Self {
             library: Library::load(),
             textures: Textures::new(),
             view: View::Library,
             selected: None,
             search: String::new(),
-            source_filter: None,
-            platform_filter: None,
-            favorites_only: false,
-            sort: Sort::Recent,
+            source_filter: prefs.source,
+            platform_filter: prefs.platform,
+            favorites_only: prefs.favorites_only,
+            sort: prefs.sort,
             cursor: 0,
             columns: 6,
             scanning: false,
@@ -130,13 +157,21 @@ impl App {
             hover_bg: None,
             logo: logo_texture(&cc.egui_ctx),
             game_dialog: false,
-            accents: HashMap::new(),
+            accents: Accents::new(),
+            accent: theme::ACCENT,
+            accent_from: theme::ACCENT,
+            accent_goal: theme::ACCENT,
+            accent_t: 1.0,
+            prefs,
             backdrop: None,
             backdrop_prev: None,
             backdrop_alpha: 0.0,
             backdrop_fade: 1.0,
             backdrop_jobs: std::collections::HashSet::new(),
             backdrop_failed: std::collections::HashSet::new(),
+            glass: None,
+            glass_for: None,
+            glass_prev: None,
             folder_input: String::new(),
             nav_mode: false,
             confirm_delete: false,
@@ -161,7 +196,6 @@ impl App {
             }
         }
 
-        app.start_scan();
         app.start_prefix_scan();
         app
     }
@@ -180,9 +214,7 @@ impl App {
             .library
             .games
             .iter()
-            .filter(|game| {
-                query.is_empty() || game.title.to_lowercase().contains(&query)
-            })
+            .filter(|game| query.is_empty() || game.title.to_lowercase().contains(&query))
             .filter(|game| self.source_filter.map(|s| game.source == s).unwrap_or(true))
             .filter(|game| {
                 self.platform_filter
@@ -360,7 +392,10 @@ impl App {
         std::thread::spawn(move || {
             let mut game = game;
             let result = prefix::ensure(&mut game, &protons);
-            let _ = tx.send(Event::Prefix { id: game.id, result });
+            let _ = tx.send(Event::Prefix {
+                id: game.id,
+                result,
+            });
         });
     }
 
@@ -371,19 +406,17 @@ impl App {
         };
         self.log(format!("Buscando prefijo de {}", game.title));
         let tx = self.tx.clone();
-        std::thread::spawn(move || {
-            match prefix::detect_for(&game) {
-                Some((prefix, proton)) => {
-                    let _ = tx.send(Event::PrefixDetected {
-                        id: game.id,
-                        prefix,
-                        proton,
-                        force: true,
-                    });
-                }
-                None => {
-                    let _ = tx.send(Event::PrefixMissing(game.id));
-                }
+        std::thread::spawn(move || match prefix::detect_for(&game) {
+            Some((prefix, proton)) => {
+                let _ = tx.send(Event::PrefixDetected {
+                    id: game.id,
+                    prefix,
+                    proton,
+                    force: true,
+                });
+            }
+            None => {
+                let _ = tx.send(Event::PrefixMissing(game.id));
             }
         });
     }
@@ -543,10 +576,14 @@ impl App {
                         self.toast(format!("Sin prefijo detectado para {title}"));
                     }
                 }
-                Event::PrefixDetected { id, prefix, proton, force } => {
-                    let proton = proton.map(|label| {
-                        prefix::best_proton(&self.protons, &label).unwrap_or(label)
-                    });
+                Event::PrefixDetected {
+                    id,
+                    prefix,
+                    proton,
+                    force,
+                } => {
+                    let proton = proton
+                        .map(|label| prefix::best_proton(&self.protons, &label).unwrap_or(label));
                     let mut updated = false;
                     if let Some(game) = self.library.get_mut(&id) {
                         let exists = game.prefix.as_ref().map(|p| p.exists()).unwrap_or(false);
@@ -585,12 +622,13 @@ impl App {
     }
 
     fn tick(&mut self) {
-        let finished = self.running.as_mut().and_then(|running| {
-            match running.child.try_wait() {
+        let finished = self
+            .running
+            .as_mut()
+            .and_then(|running| match running.child.try_wait() {
                 Ok(Some(_)) => Some((running.id.clone(), running.started.elapsed())),
                 _ => None,
-            }
-        });
+            });
         if let Some((id, elapsed)) = finished {
             self.running = None;
             let minutes = (elapsed.as_secs() / 60).max(1) as u64;
@@ -625,17 +663,16 @@ impl App {
             ),
             size,
         );
-        painter.add(egui::Shape::convex_polygon(
-            ui::widgets::rounded_points(rect, 12.0),
-            theme::SURFACE_HIGH,
-            egui::Stroke::new(1.0_f32, egui::Color32::from_white_alpha(24)),
-        ));
+        ui::widgets::glass_paint(&painter, ctx, rect, 12.0);
         painter.galley(rect.min + egui::vec2(14.0, 9.0), galley, theme::TEXT);
     }
 
     fn handle_input(&mut self, ctx: &Context) {
         let navs: Vec<Nav> = if self.cfg.gamepad_enabled {
-            self.gamepad.as_mut().map(|pad| pad.poll()).unwrap_or_default()
+            self.gamepad
+                .as_mut()
+                .map(|pad| pad.poll())
+                .unwrap_or_default()
         } else {
             Vec::new()
         };
@@ -676,39 +713,100 @@ impl App {
         self.game_dialog = false;
     }
 
-    /// Color dominante de la carátula, para el botón de play del hover.
-    pub fn cover_accent(&mut self, game: &Game) -> egui::Color32 {
-        let Some(path) = game.art.cover.as_deref() else {
-            return self.accent_for(game);
-        };
-        let key = PathBuf::from(path);
-        if let Some(color) = self.accents.get(&key) {
-            return *color;
-        }
-        let color = accent_from_file(&key).unwrap_or(theme::ACCENT);
-        self.accents.insert(key, color);
-        color
+    /// Acento compartido por los elementos activos, con fundido entre juegos.
+    pub fn accent(&self) -> egui::Color32 {
+        self.accent
     }
 
-    /// Color dominante del logo (o la portada) para el botón de jugar.
-    pub fn accent_for(&mut self, game: &Game) -> egui::Color32 {
-        let Some(path) = game.art.logo.as_deref().or(game.art.cover.as_deref()) else {
-            return theme::ACCENT;
+    /// Color del juego en foco (ficha o hover) o el del tema si no hay juego.
+    /// Devuelve `None` mientras el arte aún se está analizando, para no parpadear.
+    fn focus_accent(&mut self) -> Option<egui::Color32> {
+        let in_detail = matches!(self.view, View::Detail(_));
+        let id = match &self.view {
+            View::Detail(id) => Some(id.clone()),
+            View::Library => self.hover_bg.clone(),
+            View::Settings => None,
         };
-        let key = PathBuf::from(path);
-        if let Some(color) = self.accents.get(&key) {
-            return *color;
+        let (logo, cover) = match id.and_then(|id| self.library.get(&id)) {
+            Some(game) => (game.art.logo.clone(), game.art.cover.clone()),
+            None => (None, None),
+        };
+
+        // En la ficha manda el logo, igual que en el botón Jugar.
+        if in_detail {
+            if let Some(logo) = logo.as_deref() {
+                let color = self.accents.get(logo);
+                if self.accents.is_pending(logo) {
+                    return None;
+                }
+                if let Some(color) = color {
+                    return Some(theme::rgb(color));
+                }
+            }
         }
-        let color = accent_from_file(&key)
-            .or_else(|| {
-                game.art
-                    .cover
-                    .as_deref()
-                    .and_then(|cover| accent_from_file(std::path::Path::new(cover)))
-            })
-            .unwrap_or(theme::ACCENT);
-        self.accents.insert(key, color);
-        color
+
+        // En la biblioteca el botón del hover usa la carátula; si falta, el logo.
+        let path = if in_detail {
+            cover.as_deref()
+        } else {
+            cover.as_deref().or(logo.as_deref())
+        };
+        let Some(path) = path else {
+            return Some(theme::ACCENT);
+        };
+        let color = self.accents.get(path);
+        if self.accents.is_pending(path) {
+            return None;
+        }
+        Some(color.map(theme::rgb).unwrap_or(theme::ACCENT))
+    }
+
+    /// Funde el acento al ritmo del fondo, sin saltos al cambiar de juego.
+    fn update_accent(&mut self, ctx: &Context) {
+        if let Some(goal) = self.focus_accent() {
+            if goal != self.accent_goal {
+                self.accent_from = self.accent;
+                self.accent_goal = goal;
+                self.accent_t = 0.0;
+            }
+        }
+        if self.accent_t < 1.0 {
+            let dt = ctx.input(|i| i.stable_dt).min(0.1);
+            self.accent_t = (self.accent_t + dt / theme::ACCENT_FADE).min(1.0);
+            self.accent = theme::blend(self.accent_from, self.accent_goal, self.accent_t);
+            ctx.request_repaint();
+        }
+    }
+
+    /// Color dominante de la carátula, para el botón de play del hover.
+    pub fn cover_accent(&mut self, game: &Game) -> egui::Color32 {
+        match game.art.cover.as_deref() {
+            Some(cover) => self
+                .accents
+                .get(Path::new(cover))
+                .map(theme::rgb)
+                .unwrap_or(theme::ACCENT),
+            None => self.accent_for(game),
+        }
+    }
+
+    /// Acento del logo, con la portada como respaldo.
+    pub fn accent_for(&mut self, game: &Game) -> egui::Color32 {
+        if let Some(logo) = game.art.logo.as_deref() {
+            if let Some(color) = self.accents.get(Path::new(logo)) {
+                return theme::rgb(color);
+            }
+            // Mientras el logo se analiza no se encola también la portada.
+            if self.accents.is_pending(Path::new(logo)) {
+                return theme::ACCENT;
+            }
+        }
+        game.art
+            .cover
+            .as_deref()
+            .and_then(|cover| self.accents.get(Path::new(cover)))
+            .map(theme::rgb)
+            .unwrap_or(theme::ACCENT)
     }
 
     fn handle_nav(&mut self, nav: Nav) {
@@ -796,6 +894,8 @@ impl App {
     fn paint_backdrop(&mut self, ctx: &Context) {
         let game_id = match &self.view {
             View::Detail(id) => Some(id.clone()),
+            // Solo el juego bajo el cursor: al terminar el hover se va también
+            // su fondo, en vez de quedarse el último.
             View::Library => self.hover_bg.clone(),
             View::Settings => None,
         };
@@ -828,8 +928,23 @@ impl App {
                 if let Some(previous) = self.backdrop.take() {
                     self.backdrop_prev = Some(previous);
                 }
-                self.backdrop = Some(next);
+                self.backdrop = Some(next.clone());
                 self.backdrop_fade = 0.0;
+            }
+        }
+
+        // El desenfoque sale del mismo hilo que decodifica el fondo, así aparece
+        // junto a él en vez de un fotograma después. El anterior pasa a `prev`
+        // para fundirse con el mismo tiempo que el fondo.
+        if let Some(current) = self.backdrop.clone() {
+            if let Some(texture) = self.textures.get_blurred(Some(current.as_path())) {
+                if self.glass_for.as_ref() != Some(&current) {
+                    if self.glass.is_some() {
+                        self.glass_prev = self.glass.take();
+                    }
+                    self.glass = Some(texture);
+                    self.glass_for = Some(current);
+                }
             }
         }
 
@@ -837,7 +952,7 @@ impl App {
         let dt = ctx.input(|i| i.stable_dt).min(0.1);
         let mut animating = false;
         if (self.backdrop_alpha - target_alpha).abs() > f32::EPSILON {
-            let step = dt / 0.28;
+            let step = dt / theme::ACCENT_FADE;
             self.backdrop_alpha = if self.backdrop_alpha < target_alpha {
                 (self.backdrop_alpha + step).min(1.0)
             } else {
@@ -846,10 +961,11 @@ impl App {
             animating = true;
         }
         if self.backdrop_fade < 1.0 {
-            self.backdrop_fade = (self.backdrop_fade + dt / 0.4).min(1.0);
+            self.backdrop_fade = (self.backdrop_fade + dt / theme::ACCENT_FADE).min(1.0);
             animating = true;
         } else {
             self.backdrop_prev = None;
+            self.glass_prev = None;
         }
         if animating {
             ctx.request_repaint();
@@ -858,6 +974,9 @@ impl App {
         if self.backdrop_alpha <= 0.001 {
             self.backdrop = None;
             self.backdrop_prev = None;
+            self.glass = None;
+            self.glass_for = None;
+            self.glass_prev = None;
             return;
         }
 
@@ -874,7 +993,7 @@ impl App {
         ];
         for (layer, weight) in layers {
             let Some(layer) = layer else { continue };
-            let Some(texture) = self.textures.get(Some(layer.as_path())) else {
+            let Some(texture) = self.textures.get_urgent(Some(layer.as_path())) else {
                 ctx.request_repaint();
                 continue;
             };
@@ -892,38 +1011,26 @@ impl App {
             );
         }
 
+        // Un único velo oscuro para todas las vistas, sin degradados.
         let corner = egui::CornerRadius::same(radius as u8);
-        if matches!(self.view, View::Library) {
-            painter.rect_filled(
-                screen,
-                corner,
-                egui::Color32::from_black_alpha((alpha * 0.5 * 255.0) as u8),
-            );
-            ui::widgets::gradient_rounded(
-                &painter,
-                Rect::from_min_max(
-                    pos2(screen.min.x, screen.max.y - screen.height() * 0.45),
-                    screen.max,
-                ),
-                radius,
-                egui::Color32::TRANSPARENT,
-                egui::Color32::from_black_alpha((alpha * 0.55 * 255.0) as u8),
-                true,
-            );
-            ui::widgets::gradient_rounded(
-                &painter,
-                Rect::from_min_max(screen.min, pos2(screen.max.x, screen.min.y + 150.0)),
-                radius,
-                egui::Color32::from_black_alpha((alpha * 0.55 * 255.0) as u8),
-                egui::Color32::TRANSPARENT,
-                true,
-            );
-        } else {
-            painter.rect_filled(
-                screen,
-                corner,
-                egui::Color32::from_black_alpha((alpha * 0.16 * 255.0) as u8),
-            );
+        painter.rect_filled(
+            screen,
+            corner,
+            egui::Color32::from_black_alpha((alpha * theme::BACKDROP_DIM * 255.0) as u8),
+        );
+    }
+
+    /// Guarda filtros y orden solo cuando cambian.
+    fn save_prefs(&mut self) {
+        let current = Prefs {
+            sort: self.sort,
+            source: self.source_filter,
+            platform: self.platform_filter,
+            favorites_only: self.favorites_only,
+        };
+        if current != self.prefs {
+            current.save();
+            self.prefs = current;
         }
     }
 
@@ -947,7 +1054,7 @@ impl eframe::App for App {
 
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         // Los resultados de los hilos de trabajo llegan por canal y deben repintar.
-        if self.poll_events() | self.textures.poll(ctx) {
+        if self.poll_events() | self.textures.poll(ctx) | self.accents.poll() {
             ctx.request_repaint();
         }
         if ctx.input(|i| i.pointer.delta() != egui::Vec2::ZERO || i.pointer.any_click()) {
@@ -955,8 +1062,38 @@ impl eframe::App for App {
         }
         self.tick();
         self.handle_input(ctx);
+        // El hover de la biblioteca no sobrevive a la salida del cursor ni al
+        // cambio de vista: al limpiarlo se repinta para que no quede el último.
+        let in_library = matches!(self.view, View::Library);
+        let pointer_here = ctx.input(|i| i.pointer.has_pointer());
+        if (!in_library || !pointer_here) && self.hover_bg.take().is_some() {
+            ctx.request_repaint();
+        }
         self.paint_background(ctx);
         self.paint_backdrop(ctx);
+        self.update_accent(ctx);
+
+        let glass = match (&self.glass, &self.backdrop) {
+            (Some(texture), Some(_)) if texture.size.x > 0.0 => {
+                let prev = self.glass_prev.as_ref();
+                Some(ui::widgets::Glass {
+                    texture: texture.handle.id(),
+                    size: texture.size,
+                    prev: prev.map(|prev| prev.handle.id()),
+                    prev_size: prev.map(|prev| prev.size).unwrap_or(egui::Vec2::ZERO),
+                    luma: texture.luma.clone(),
+                    prev_luma: prev.and_then(|prev| prev.luma.clone()),
+                    fade: self.backdrop_fade,
+                    screen: ctx.content_rect(),
+                    alpha: (self.backdrop_alpha.clamp(0.0, 1.0) * 255.0) as u8,
+                })
+            }
+            _ => None,
+        };
+        match glass {
+            Some(glass) => ctx.data_mut(|d| d.insert_temp(egui::Id::new("glass"), glass)),
+            None => ctx.data_mut(|d| d.remove::<ui::widgets::Glass>(egui::Id::new("glass"))),
+        }
 
         ui::titlebar::show(self, ctx);
         ui::rail::show(self, ctx);
@@ -970,20 +1107,23 @@ impl eframe::App for App {
             top: (theme::TITLEBAR_HEIGHT + 16.0) as i8,
             bottom: 22,
         });
-        egui::CentralPanel::default().frame(frame).show(ctx, |ui| match view {
-            View::Library => ui::library::show(self, ui, &mut actions),
-            View::Detail(id) => ui::detail::show(self, ui, &mut actions, &id),
-            View::Settings => ui::settings::show(self, ui, &mut actions),
-        });
+        egui::CentralPanel::default()
+            .frame(frame)
+            .show(ctx, |ui| match view {
+                View::Library => ui::library::show(self, ui, &mut actions),
+                View::Detail(id) => ui::detail::show(self, ui, &mut actions, &id),
+                View::Settings => ui::settings::show(self, ui, &mut actions),
+            });
 
         self.apply_actions(actions);
         self.draw_toast(ctx);
+        self.save_prefs();
 
         if self.scanning || self.art_fetching || self.tier_fetching || self.running.is_some() {
             ctx.request_repaint_after(Duration::from_millis(400));
         }
-        if self.textures.is_busy() {
-            ctx.request_repaint_after(Duration::from_millis(80));
+        if self.textures.is_busy() || self.accents.is_busy() {
+            ctx.request_repaint_after(Duration::from_millis(16));
         }
     }
 }
@@ -999,49 +1139,4 @@ fn logo_texture(ctx: &Context) -> Option<egui::TextureHandle> {
     let size = [image.width() as usize, image.height() as usize];
     let pixels = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
     Some(ctx.load_texture("app_logo", pixels, egui::TextureOptions::LINEAR))
-}
-
-/// Tono vivo del arte, ignorando transparencias, grises y extremos de brillo.
-fn accent_from_file(path: &std::path::Path) -> Option<egui::Color32> {
-    let image = image::open(path).ok()?.thumbnail(32, 32).to_rgba8();
-    let mut sum = [0f32; 3];
-    let mut weight = 0f32;
-    for pixel in image.pixels() {
-        let [r, g, b, a] = pixel.0;
-        if a < 200 {
-            continue;
-        }
-        let max = r.max(g).max(b) as f32;
-        let min = r.min(g).min(b) as f32;
-        let saturation = (max - min) / max.max(1.0);
-        if saturation < 0.22 || max < 70.0 {
-            continue;
-        }
-        let luminance = 0.2126 * r as f32 + 0.7152 * g as f32 + 0.0722 * b as f32;
-        if luminance > 236.0 {
-            continue;
-        }
-        let w = saturation * (1.0 - ((luminance - 150.0).abs() / 260.0)).clamp(0.25, 1.0);
-        sum[0] += r as f32 * w;
-        sum[1] += g as f32 * w;
-        sum[2] += b as f32 * w;
-        weight += w;
-    }
-    if weight <= 0.0 {
-        return None;
-    }
-    let mut rgb = [sum[0] / weight, sum[1] / weight, sum[2] / weight];
-    // Se sube el brillo si el tono queda apagado, sin destrozar la saturación.
-    let peak = rgb[0].max(rgb[1]).max(rgb[2]);
-    if peak < 110.0 {
-        let gain = 150.0 / peak.max(1.0);
-        for channel in &mut rgb {
-            *channel = (*channel * gain).min(235.0);
-        }
-    }
-    Some(egui::Color32::from_rgb(
-        rgb[0] as u8,
-        rgb[1] as u8,
-        rgb[2] as u8,
-    ))
 }

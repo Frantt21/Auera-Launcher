@@ -70,7 +70,9 @@ impl Client {
     pub fn assets(&self, game_id: u32) -> AssetUrls {
         AssetUrls {
             hero: self.first_url(&format!("heroes/game/{game_id}")),
-            cover: self.first_url(&format!("grids/game/{game_id}?dimensions=600x900&types=static")),
+            cover: self.first_url(&format!(
+                "grids/game/{game_id}?dimensions=600x900&types=static"
+            )),
             logo: self.first_url(&format!("logos/game/{game_id}")),
             // Los iconos por defecto son .ico y el decoder no los soporta.
             icon: self.first_url(&format!("icons/game/{game_id}?mimes=image/png")),
@@ -135,7 +137,13 @@ pub fn fetch_assets(
         None => game
             .app_id
             .and_then(|app_id| client.game_by_steam(app_id))
-            .or_else(|| client.search_games(&game.title).into_iter().next().map(|(id, _)| id)),
+            .or_else(|| {
+                client
+                    .search_games(&game.title)
+                    .into_iter()
+                    .next()
+                    .map(|(id, _)| id)
+            }),
     };
     let Some(sgdb_id) = sgdb_id else {
         return (art, None);

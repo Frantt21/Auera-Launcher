@@ -1,11 +1,13 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use serde::Serialize;
+
 use crate::config;
 use crate::model::{Game, Platform, Source};
 use crate::scan::{steam, steam_roots};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Proton {
     pub name: String,
     pub dir: PathBuf,
@@ -51,7 +53,11 @@ pub fn detect_protons() -> Vec<Proton> {
             if !path.join("proton").is_file() {
                 continue;
             }
-            let dir_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let dir_name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             if !dir_name.to_lowercase().contains("proton") {
                 continue;
             }
@@ -119,9 +125,9 @@ pub fn best_proton(protons: &[Proton], label: &str) -> Option<String> {
             vendor_key.is_some() && vendor(&name) == vendor_key && version_key(&name) == version
         })
         .or_else(|| {
-            protons
-                .iter()
-                .find(|proton| version.is_some() && version_key(&proton.name.to_lowercase()) == version)
+            protons.iter().find(|proton| {
+                version.is_some() && version_key(&proton.name.to_lowercase()) == version
+            })
         })
         .map(|proton| proton.name.clone())
 }
@@ -173,14 +179,11 @@ pub fn heroic_prefix(app_id: &str) -> Option<(PathBuf, Option<String>)> {
         let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
             continue;
         };
-        let config = value
-            .get(app_id)
-            .and_then(|v| v.as_object())
-            .or_else(|| {
-                value
-                    .as_object()
-                    .and_then(|map| map.values().find_map(|v| v.as_object()))
-            });
+        let config = value.get(app_id).and_then(|v| v.as_object()).or_else(|| {
+            value
+                .as_object()
+                .and_then(|map| map.values().find_map(|v| v.as_object()))
+        });
         let Some(config) = config else {
             continue;
         };
@@ -229,7 +232,8 @@ pub fn expand(text: &str) -> PathBuf {
 }
 
 pub fn looks_like_prefix(dir: &Path) -> bool {
-    dir.join("drive_c").is_dir() && (dir.join("system.reg").is_file() || dir.join("user.reg").is_file())
+    dir.join("drive_c").is_dir()
+        && (dir.join("system.reg").is_file() || dir.join("user.reg").is_file())
 }
 
 /// Nombre de la capa de compatibilidad anotada por Steam/Proton en el compatdata.
@@ -257,7 +261,9 @@ pub fn detect_for(game: &Game) -> Option<(PathBuf, Option<String>)> {
         if let Some(app_id) = game.app_id {
             for root in steam_roots() {
                 for library in steam::libraries(&root) {
-                    let compat = library.join("steamapps/compatdata").join(app_id.to_string());
+                    let compat = library
+                        .join("steamapps/compatdata")
+                        .join(app_id.to_string());
                     let prefix = compat.join("pfx");
                     if prefix.is_dir() {
                         return Some((prefix, proton_label(&compat)));
@@ -370,7 +376,10 @@ fn find_near(install_dir: &Path) -> Option<PathBuf> {
 /// Devuelve el compatdata (padre de pfx) que usa Proton.
 pub fn compat_dir(prefix: &Path) -> PathBuf {
     if prefix.file_name().map(|n| n == "pfx").unwrap_or(false) {
-        prefix.parent().map(Path::to_path_buf).unwrap_or_else(|| prefix.to_path_buf())
+        prefix
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| prefix.to_path_buf())
     } else {
         prefix.to_path_buf()
     }
@@ -425,7 +434,6 @@ pub fn ensure(game: &mut Game, protons: &[Proton]) -> Result<PathBuf, String> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -433,6 +441,9 @@ mod tests {
         let home = dirs::home_dir().expect("home");
         assert_eq!(super::expand("~/juegos"), home.join("juegos"));
         assert_eq!(super::expand("  \"~/pfx\" "), home.join("pfx"));
-        assert_eq!(super::expand("/ruta/absoluta"), std::path::PathBuf::from("/ruta/absoluta"));
+        assert_eq!(
+            super::expand("/ruta/absoluta"),
+            std::path::PathBuf::from("/ruta/absoluta")
+        );
     }
 }
