@@ -90,11 +90,22 @@ pub async fn accent(app: AppHandle, id: String, prefer_logo: bool) -> Rgb {
 }
 
 #[tauri::command]
-pub async fn backdrop(app: AppHandle, id: String) -> Option<service::BackdropInfo> {
+pub async fn backdrop(app: AppHandle, id: String) -> Option<String> {
     tauri::async_runtime::spawn_blocking(move || app.state::<Service>().backdrop_for(&id))
         .await
         .ok()
         .flatten()
+}
+
+#[tauri::command]
+pub async fn refresh_backdrop(app: AppHandle, id: String) -> Option<String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::backdrop::invalidate(&id);
+        app.state::<Service>().backdrop_for(&id)
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 #[tauri::command]

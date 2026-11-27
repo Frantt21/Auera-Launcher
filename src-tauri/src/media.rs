@@ -1,15 +1,9 @@
 use std::path::{Path, PathBuf};
 
+
 use image::GenericImageView;
 use percent_encoding::percent_decode_str;
 use tauri::http::Response;
-
-#[derive(serde::Serialize, Clone)]
-pub struct LumaGrid {
-    pub width: u32,
-    pub height: u32,
-    pub values: Vec<f32>,
-}
 
 pub fn base() -> &'static str {
     if cfg!(windows) {
@@ -165,7 +159,6 @@ fn resize_cached(path: &Path, width: u32) -> Result<(Vec<u8>, &'static str), Box
         )?;
         "image/png"
     } else {
-        use image::ImageEncoder;
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, 86)
             .encode_image(&resized.to_rgb8())?;
         "image/jpeg"
@@ -175,19 +168,3 @@ fn resize_cached(path: &Path, width: u32) -> Result<(Vec<u8>, &'static str), Box
     Ok((bytes, mime))
 }
 
-pub fn luma_grid(path: &Path, cells: u32) -> Option<LumaGrid> {
-    let img = image::open(path).ok()?;
-    let thumb = img.thumbnail(cells, cells);
-    let rgba = thumb.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let mut values = Vec::with_capacity((w * h) as usize);
-    for p in rgba.pixels() {
-        let luma = 0.2126 * p[0] as f32 + 0.7152 * p[1] as f32 + 0.0722 * p[2] as f32;
-        values.push(luma);
-    }
-    Some(LumaGrid {
-        width: w,
-        height: h,
-        values,
-    })
-}

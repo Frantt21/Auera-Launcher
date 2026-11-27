@@ -25,12 +25,18 @@
   let selectedGame = null;
   let selectedAccent = "#c49cff";
   let selectedAccentRgb = { r: 196, g: 156, b: 255 };
-  let backdropUrl = null;
-  let lumaGrid = null;
-  let toneClass = "";
+
+  // Fondo del juego enfocado: dos capas para cruzar con fundido.
+  let bgCurrent = null;
+  let bgPrevious = null;
+  let bgTimer = null;
+  let bgKey = null;
+  let hoverTimer = null;
 
   let gamepadName = null;
   let candidates = null;
+  let contextMenu = null;
+  let pendingDelete = null;
 
   let accentMap = {};
   const fetchedAccents = new Set();
@@ -40,7 +46,8 @@
 
   $: selectedGame = games.find((g) => g.id === selectedId) ?? null;
   $: visibleGames = sortGames(games, prefs);
-  $: if (selectedGame) loadSelected(selectedGame.id);
+  $: favoriteGames = visibleGames.filter((g) => g.favorite);
+  $: if (view === "detail" && selectedGame) loadSelected(selectedGame.id);
 
   function sortGames(list, p) {
     let out = [...list];
@@ -65,24 +72,51 @@
   }
 
   async function loadSelected(id) {
+    showBackdrop(id);
     try {
       const rgb = await invoke("accent", { id, preferLogo: true });
       selectedAccentRgb = rgb;
       selectedAccent = rgbToHex(rgb.r, rgb.g, rgb.b);
     } catch {}
-    try {
-      const info = await invoke("backdrop", { id });
-      if (info) {
-        backdropUrl = info.url;
-        lumaGrid = info.luma;
-        const avg = info.luma.values.reduce((a, b) => a + b, 0) / info.luma.values.length;
-        toneClass = avg >= 150 ? "tone-light" : "";
-      } else {
-        backdropUrl = null;
-        lumaGrid = null;
-        toneClass = "";
-      }
-    } catch {}
+  }
+
+  function setBackdrop(url) {
+    clearTimeout(bgTimer);
+    bgPrevious = bgCurrent;
+    bgCurrent = url;
+    if (bgPrevious) bgTimer = setTimeout(() => { bgPrevious = null; }, 420);
+  }
+
+  async function showBackdrop(id) {
+    clearTimeout(hoverTimer);
+    if (id === bgKey) return;
+    bgKey = id;
+    if (!id) {
+      setBackdrop(null);
+      return;
+    }
+    const url = await invoke("backdrop", { id }).catch(() => null);
+    if (id !== bgKey) return;
+    setBackdrop(url);
+  }
+
+  // Retrasa la carga del fondo mientras el ratón barre varias tarjetas.
+  function hoverBackdrop(id) {
+    clearTimeout(hoverTimer);
+    if (!id) {
+      showBackdrop(null);
+      return;
+    }
+    if (id === bgKey) return;
+    hoverTimer = setTimeout(() => showBackdrop(id), 60);
+  }
+
+  // Prepara los fondos de la primera pantalla para que el primer hover sea inmediato.
+  async function warmBackdrops() {
+    for (const g of games.slice(0, 20)) {
+      if (!g.art?.hero && !g.art?.cover) continue;
+      await invoke("backdrop", { id: g.id }).catch(() => null);
+    }
   }
 
   async function fetchAccents() {
@@ -126,6 +160,7 @@
     await listen("gamepad", (e) => { handleGamepad(e.payload); });
 
     fetchAccents();
+    setTimeout(warmBackdrops, 1200);
   });
 
   function handleGamepad(nav) {
@@ -140,6 +175,34 @@
   }
   async function fetchTiers() {
     await invoke("fetch_tiers");
+  }
+
+  function openContext(e, game) {
+    contextMenu = {
+      game,
+      x: Math.min(e.clientX, window.innerWidth - 190),
+      y: Math.min(e.clientY, window.innerHeight - 92),
+    };
+  }
+
+  async function refreshBackdrop() {
+    const game = contextMenu.game;
+    contextMenu = null;
+    const url = await invoke("refresh_backdrop", { id: game.id }).catch(() => null);
+    if (!url) return;
+    bgKey = game.id;
+    setBackdrop(url);
+  }
+
+  async function deleteGame() {
+    const game = pendingDelete;
+    pendingDelete = null;
+    await invoke("remove_game", { id: game.id });
+    if (selectedId === game.id) {
+      selectedId = null;
+      view = "library";
+    }
+    showBackdrop(null);
   }
 
   async function onFavorite(g) {
@@ -167,14 +230,28 @@
   }
 </script>
 
-<div class={toneClass} style="height:100%;position:relative;">
-  {#if backdropUrl}
-    <img class="backdrop" src={backdropUrl} alt="" />
+<div class="shell">
+  {#if bgPrevious}
+    <img class="backdrop fade-out" src={bgPrevious} alt="" />
+  {/if}
+  {#if bgCurrent}
+    <img class="backdrop fade-in" src={bgCurrent} alt="" />
+  {/if}
+  {#if bgCurrent || bgPrevious}
     <div class="backdrop-dim"></div>
   {/if}
 
   <Titlebar />
-  <Rail {view}         onNavigate={(v) => (view = v)} {gamepadName} />
+  <Rail
+    {view}
+    onNavigate={(v) => { view = v; if (v !== "detail") showBackdrop(null); }}
+    {gamepadName}
+    favorites={favoriteGames}
+    {mediaBase}
+    onOpen={(g) => { selectedId = g.id; view = "detail"; }}
+    onHover={(g) => hoverBackdrop(g ? g.id : null)}
+    onContext={openContext}
+  />
 
   <div class="content">
     {#if fatal}
@@ -188,9 +265,11 @@
         {mediaBase}
         accentFor={(g) => accentMap[g.id] ?? "#c49cff"}
         onSelect={(g) => { selectedId = g.id; view = "detail"; }}
+        onHover={(g) => hoverBackdrop(g ? g.id : null)}
         onFavorite={onFavorite}
         prefs={prefs}
         onPrefsChange={(p) => applyPrefs(p)}
+        onContext={openContext}
       />
     {:else if view === "detail" && selectedGame}
       <Detail
@@ -198,7 +277,7 @@
         {mediaBase}
         accent={selectedAccent}
         accentRgb={selectedAccentRgb}
-        onBack={() => (view = "library")}
+        onBack={() => { view = "library"; showBackdrop(null); }}
         onChanged={onChanged}
       />
     {:else if view === "settings" && cfg}
@@ -212,6 +291,33 @@
       />
     {/if}
   </div>
+
+  {#if contextMenu}
+    <div
+      class="ctx-scrim"
+      onclick={() => (contextMenu = null)}
+      oncontextmenu={(e) => { e.preventDefault(); contextMenu = null; }}
+    ></div>
+    <div class="context-menu glass" style={`top:${contextMenu.y}px;left:${contextMenu.x}px;`}>
+      <button onclick={refreshBackdrop}>Recalcular hover</button>
+      <button class="danger" onclick={() => { pendingDelete = contextMenu.game; contextMenu = null; }}>Eliminar</button>
+    </div>
+  {/if}
+
+  {#if pendingDelete}
+    <div class="modal-backdrop" onclick={() => (pendingDelete = null)}>
+      <div class="modal glass" onclick={(e) => e.stopPropagation()}>
+        <h3 style="margin-top:0;">Eliminar juego</h3>
+        <div style="font-size:13px;opacity:.8;">
+          Se quitará «{pendingDelete.title}» de la biblioteca. Los archivos instalados no se tocan.
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+          <button class="ghost" onclick={() => (pendingDelete = null)}>Cancelar</button>
+          <button class="danger" onclick={deleteGame}>Eliminar</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 
   {#if candidates}
     <div class="modal-backdrop" onclick={() => (candidates = null)}>

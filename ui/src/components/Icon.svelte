@@ -19,6 +19,8 @@
     <path d="M5 12h14" />
   {:else if name === "max"}
     <rect x="4" y="4" width="16" height="16" rx="2" />
+  {:else if name === "chevron"}
+    <path d="m6 9 6 6 6-6" />
   {:else if name === "folder"}
     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
   {:else if name === "gamepad"}

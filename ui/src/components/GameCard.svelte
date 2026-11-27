@@ -1,5 +1,5 @@
 <script>
-  import { mediaUrl } from "../lib/tauri";
+  import { mediaUrl, glowOf } from "../lib/tauri";
   import Icon from "./Icon.svelte";
 
   export let game;
@@ -8,11 +8,21 @@
 
   export let onClick = () => {};
   export let onFavorite = () => {};
+  export let onHover = () => {};
+  export let onContext = () => {};
 
   $: coverUrl = game.art.cover ? mediaUrl(mediaBase, game.art.cover, 336) : null;
+  $: glow = /^#[0-9a-f]{6}$/i.test(accent) ? glowOf(accent) : accent;
 </script>
 
-<div class="game-card glass" style={`--accent:${accent};`} onclick={() => onClick(game)}>
+<div
+  class="game-card"
+  style={`--accent:${accent};--glow:${glow};`}
+  onclick={() => onClick(game)}
+  onmouseenter={() => onHover(game)}
+  onmouseleave={() => onHover(null)}
+  oncontextmenu={(e) => { e.preventDefault(); onContext(e, game); }}
+>
   {#if coverUrl}
     <img class="cover" src={coverUrl} alt={game.title} loading="lazy" />
   {:else}

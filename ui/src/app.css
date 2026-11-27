@@ -20,13 +20,24 @@ html, body, #app {
   padding: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
+  background: transparent;
   color: var(--text);
   font-family: var(--font);
   user-select: none;
 }
 
+/* Recorta el contenido para dibujar las esquinas redondeadas de la ventana. */
+.shell {
+  position: relative;
+  height: 100%;
+  background: var(--bg);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
 button { font-family: inherit; }
+
+.muted { color: var(--muted); }
 
 .glass {
   background: var(--glass);
@@ -35,9 +46,6 @@ button { font-family: inherit; }
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius);
 }
-
-.tone-light { color: #0b0b0f; }
-.tone-light .muted { color: #3a3a44; }
 
 button.primary {
   background: var(--accent);
@@ -54,7 +62,7 @@ button.primary.light-ink { color: #ffffff; }
 button.ghost {
   background: transparent;
   color: var(--text);
-  border: 1px solid rgba(255,255,255,0.12);
+  border: none;
   border-radius: 10px;
   padding: 6px 12px;
   cursor: pointer;
@@ -69,12 +77,99 @@ button.danger {
   cursor: pointer;
 }
 
+.dropdown { display: inline-flex; }
+
+.dropdown-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color .12s ease;
+}
+
+.dropdown-toggle:hover { border-color: rgba(255, 255, 255, 0.22); }
+
+.dropdown-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+}
+
+.dropdown-menu {
+  position: fixed;
+  z-index: 90;
+  min-width: 170px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dropdown-menu button {
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dropdown-menu button:hover { background: rgba(255, 255, 255, 0.08); }
+
+.dropdown-menu button.active {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+}
+
+.ctx-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 96;
+  min-width: 180px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.context-menu button {
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.context-menu button:hover { background: rgba(255, 255, 255, 0.08); }
+
+.context-menu button.danger { color: var(--danger); }
+
+.context-menu button.danger:hover {
+  background: color-mix(in srgb, var(--danger) 22%, transparent);
+}
+
 .scroll { overflow-y: auto; overflow-x: hidden; }
 .scroll::-webkit-scrollbar { width: 8px; }
 .scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
 
 .backdrop {
-  position: fixed;
+  position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
@@ -83,32 +178,134 @@ button.danger {
   pointer-events: none;
 }
 
+.backdrop.fade-in { animation: backdrop-in .4s ease both; }
+.backdrop.fade-out { animation: backdrop-out .4s ease both; }
+
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes backdrop-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 .backdrop-dim {
-  position: fixed;
+  position: absolute;
   inset: 0;
   background: rgba(0,0,0,0.38);
   z-index: 1;
   pointer-events: none;
 }
 
+/* Franja superior arrastrable; solo el racimo de botones pinta fondo. */
 .titlebar {
   position: fixed;
   top: 0; left: 0; right: 0;
   height: 40px;
+  z-index: 50;
+}
+
+.window-cluster {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+  width: 80px;
+  height: 28px;
+  display: flex;
+  align-items: stretch;
+  background: rgba(0, 0, 0, 0.47);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 9px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  overflow: hidden;
+}
+
+.window-cluster button {
+  flex: 1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 12px;
-  z-index: 50;
-  -webkit-app-region: drag;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
 }
-.titlebar button { 
-    -webkit-app-region: no-drag;
+
+.window-cluster button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.window-cluster button.danger:hover {
+  background: color-mix(in srgb, var(--danger) 75%, transparent);
+  color: #ffffff;
+}
+
+.cluster-divider {
+  width: 1px;
+  margin: 6px 0;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.rail button {
+  width: 100%;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
 .rail button.active {
-    background: rgba(255,255,255,0.12); 
+  background: rgba(255, 255, 255, 0.12);
 }
+
+.rail-favorites {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 2px;
+}
+
+.rail-favorites::-webkit-scrollbar { width: 4px; }
+.rail-favorites::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+
+.rail-fav {
+  flex: 0 0 auto;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: var(--surface-high);
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color .12s ease;
+}
+
+.rail-fav img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.rail-fav:hover { border-color: var(--accent); }
 
 .rail {
   position: fixed;
@@ -150,7 +347,7 @@ button.danger {
 
 .game-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 35%, transparent);
+  box-shadow: 0 8px 20px var(--glow);
 }
 
 .game-card .cover {

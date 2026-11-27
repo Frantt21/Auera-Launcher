@@ -1,6 +1,5 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::process::Child;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -26,12 +25,6 @@ pub struct Busy {
     pub art: bool,
     pub tiers: bool,
     pub prefix: bool,
-}
-
-#[derive(Clone, serde::Serialize)]
-pub struct BackdropInfo {
-    pub url: String,
-    pub luma: crate::media::LumaGrid,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -165,15 +158,11 @@ impl Service {
         DEFAULT_ACCENT
     }
 
-    pub fn backdrop_for(&self, id: &str) -> Option<BackdropInfo> {
+    pub fn backdrop_for(&self, id: &str) -> Option<String> {
         let game = self.library.lock().unwrap().get(id).cloned()?;
         let source = game.art.hero.clone().or(game.art.cover.clone())?;
         let path = backdrop::generate(&game.id, &source)?;
-        let luma = crate::media::luma_grid(&path, 32)?;
-        Some(BackdropInfo {
-            url: crate::media::url(&path, 0),
-            luma,
-        })
+        Some(crate::media::url(&path, 0))
     }
 
     pub fn play(&self, id: &str) -> Result<(), String> {
@@ -387,7 +376,6 @@ pub fn start_tiers(app: AppHandle) {
         return;
     }
     service.emit_busy();
-    let cfg = service.cfg();
     let app2 = app.clone();
     std::thread::spawn(move || {
         let service = app2.state::<Service>();

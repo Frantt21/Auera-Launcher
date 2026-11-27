@@ -51,6 +51,7 @@ pub fn run() {
             commands::play,
             commands::accent,
             commands::backdrop,
+            commands::refresh_backdrop,
             commands::set_config,
             commands::set_prefs,
             commands::update_game,

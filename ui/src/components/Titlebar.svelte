@@ -3,16 +3,20 @@
   import Icon from "./Icon.svelte";
 
   const appWindow = getCurrentWindow();
-  let title = "Auera";
+
+  function minimize() {
+    appWindow.minimize();
+  }
+
+  function close() {
+    appWindow.close();
+  }
 </script>
 
-<div class="titlebar glass">
-  <div style="display:flex;align-items:center;gap:8px;">
-    <span style="font-weight:700;letter-spacing:.5px;">{title}</span>
-  </div>
-  <div style="display:flex;gap:4px;">
-    <button class="ghost" style="padding:4px 8px;" onclick={() => appWindow.minimize()}><Icon name="min" size={14} /></button>
-    <button class="ghost" style="padding:4px 8px;" onclick={() => appWindow.toggleMaximize()}><Icon name="max" size={14} /></button>
-    <button class="ghost" style="padding:4px 8px;" onclick={() => appWindow.close()}><Icon name="close" size={14} /></button>
+<div class="titlebar" data-tauri-drag-region="deep">
+  <div class="window-cluster" data-tauri-drag-region="false">
+    <button aria-label="Minimizar" onclick={minimize}><Icon name="min" size={12} /></button>
+    <span class="cluster-divider"></span>
+    <button class="danger" aria-label="Cerrar" onclick={close}><Icon name="close" size={12} /></button>
   </div>
 </div>

@@ -116,4 +116,5 @@ mod tests {
         let written = image::open(&target).unwrap();
         assert!(written.width().max(written.height()) <= MAX_SIDE);
     }
+
 }
