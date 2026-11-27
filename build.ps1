@@ -51,6 +51,11 @@ foreach ($line in $lines) {
 if (-not ($CargoArgs -match '--manifest-path')) {
     $CargoArgs = @('--manifest-path', 'src-tauri/Cargo.toml') + $CargoArgs
 }
+# Por defecto se embebe el frontend (custom-protocol) para que el binario
+# muestre la interfaz sin depender de Vite en localhost:1420.
+if (-not ($CargoArgs -match '--features')) {
+    $CargoArgs = $CargoArgs + @('--features', 'custom-protocol')
+}
 
 $detalle = if ($CargoArgs.Count) { ' ' + ($CargoArgs -join ' ') } else { '' }
 Write-Host "cargo build$detalle" -ForegroundColor Cyan

@@ -34,6 +34,3 @@
   {/if}
 </div>
 
-<style>
-  .game-card:hover { box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 35%, transparent); }
-</style>

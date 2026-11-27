@@ -236,6 +236,3 @@
   <Toasts {toasts} />
 </div>
 
-<style>
-  /* bind cfg changes to save handled in Settings via set_config */
-</style>

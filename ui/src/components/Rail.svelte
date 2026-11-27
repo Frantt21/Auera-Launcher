@@ -18,6 +18,3 @@
   {/if}
 </div>
 
-<style>
-  button.active { background: rgba(255,255,255,0.12); }
-</style>
