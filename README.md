@@ -1,22 +1,34 @@
 # Auera Launcher
 
-Launcher de juegos offline para Windows y Linux, escrito en Rust con egui.
+Launcher de juegos offline para Windows y Linux. La interfaz principal es Tauri
+(Svelte + Rust); el antiguo frontend egui ya no se usa ni se compila.
 
-## Compilar
+## Compilar (Tauri)
 
 ```bash
-cargo run            # desarrollo
-cargo build --release
+npm install
+npm run tauri dev     # desarrollo con recarga
+npm run tauri build   # binario final
 ```
 
-En Linux necesita `pkg-config`, `libudev` (mandos) y las dependencias de ventana de egui
-(`libxkbcommon`, `libwayland`, o las de X11).
+Un `cargo build` de `src-tauri` sin más apunta a `http://localhost:1420` (la UI de Vite),
+así que el exe queda en blanco si ese servidor no está corriendo. Para un binario autónomo:
+
+```bash
+npm run build
+powershell -NoProfile -ExecutionPolicy Bypass -File ./build.ps1 --manifest-path src-tauri/Cargo.toml --features custom-protocol
+```
+
+También se puede compilar el wrapper de la raíz (`cargo run`), que delega en el crate de Tauri.
+
+En Linux necesita `pkg-config`, `libudev` (mandos) y las dependencias de ventana de Tauri/WebView.
 
 ## Qué incluye
 
-- Escaneo de bibliotecas: Steam (`libraryfolders.vdf` + `appmanifest_*.acf`, tiempo jugado
-  desde `localconfig.vdf`), Epic Games, Heroic (GOG/Epic/Amazon y sideload, nativo y Flatpak,
-  incluido `winePrefix`), Hydra (`hydra-db` + `wine-prefixes`) y accesos `.desktop` de Linux.
+- Escaneo manual de bibliotecas desde el botón **Escanear** (no se lanza solo al abrir):
+  Steam (`libraryfolders.vdf` + `appmanifest_*.acf`, tiempo jugado desde `localconfig.vdf`),
+  Epic Games, Heroic (GOG/Epic/Amazon y sideload, nativo y Flatpak, incluido `winePrefix`),
+  Hydra (`hydra-db` + `wine-prefixes`) y accesos `.desktop` de Linux.
 - Carpetas vigiladas: cada subcarpeta con ejecutable se propone como juego.
 - Arte desde SteamGridDB (héroe, portada, logo e icono) cacheado en disco y reutilizado
   entre sesiones; el id resuelto de SteamGridDB también se guarda para no repetir la búsqueda.
@@ -33,8 +45,10 @@ En Linux necesita `pkg-config`, `libudev` (mandos) y las dependencias de ventana
   En Linux los juegos de Windows se lanzan con Proton; el bloqueo manual por sistema
   se marca por juego desde su ficha.
 - Interfaz con titlebar mínima (`_`/`x` en un contenedor arriba a la derecha), rail flotante
-  translúcido con el icono de la app, biblioteca con portadas, filtros y fondo animado del
-  juego bajo el ratón, ficha a pantalla completa con logo y botón en el color del arte, y
+  translúcido con el icono de la app, biblioteca con portadas, filtros y orden que se
+  conservan entre arranques, fondo animado del juego bajo el ratón, ficha a pantalla completa
+  con logo y botón en el color del arte (ese mismo acento, con fundido al cambiar de juego,
+  lo usan el rail y los filtros activos), y
   diálogo de opciones (ejecutable, instalación, compatibilidad y SteamGridDB); español e inglés.
 - Mandos (XInput/DualShock/DualSense) con mapeado fijo para navegación y aceptar/volver.
 
@@ -43,8 +57,10 @@ En Linux necesita `pkg-config`, `libudev` (mandos) y las dependencias de ventana
 - Linux/macOS: `$XDG_CONFIG_HOME/auera` (por defecto `~/.config/auera`).
 - Windows: `%APPDATA%\\auera`.
 
-Contiene `config.json`, `library.json`, `protondb.json`, la caché de arte en `art/` y los fondos
-reducidos en `backdrops/` (un JPEG por juego, generado la primera vez y reutilizado entre arranques).
+Contiene `config.json`, `library.json`, `prefs.json` (filtros y orden de la biblioteca),
+`protondb.json`, la caché de arte en `art/`, los fondos reducidos en `backdrops/` (un JPEG por
+juego, generado la primera vez y reutilizado entre arranques) y las copias reducidas de arte
+grande en `textures/` (PNG con alfa o JPEG, regeneradas cuando cambia el arte original).
 
 La clave de SteamGridDB se configura en Ajustes → Integraciones y se guarda solo en
 `config.json`. El repositorio incluye una clave de desarrollo como valor inicial.

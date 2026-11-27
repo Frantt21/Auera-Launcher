@@ -1,0 +1,399 @@
+:root {
+  --bg: #08080b;
+  --surface: #111117;
+  --surface-high: #1a1a22;
+  --text: #f0f0f5;
+  --muted: #9494a2;
+  --accent: #c49cff;
+  --accent-deep: #7a52d6;
+  --danger: #e25c5c;
+  --ok: #70c88c;
+  --radius: 14px;
+  --glass: rgba(0, 0, 0, 0.408);
+  --font: "Segoe UI", "Inter", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #app {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font);
+  user-select: none;
+}
+
+/* Recorta el contenido para dibujar las esquinas redondeadas de la ventana. */
+.shell {
+  position: relative;
+  height: 100%;
+  background: var(--bg);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+button { font-family: inherit; }
+
+.muted { color: var(--muted); }
+
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius);
+}
+
+button.primary {
+  background: var(--accent);
+  color: #0b0b0f;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.primary.light-ink { color: #ffffff; }
+
+button.ghost {
+  background: transparent;
+  color: var(--text);
+  border: none;
+  border-radius: 10px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+button.danger {
+  background: var(--danger);
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.dropdown { display: inline-flex; }
+
+.dropdown-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color .12s ease;
+}
+
+.dropdown-toggle:hover { border-color: rgba(255, 255, 255, 0.22); }
+
+.dropdown-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+}
+
+.dropdown-menu {
+  position: fixed;
+  z-index: 90;
+  min-width: 170px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dropdown-menu button {
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dropdown-menu button:hover { background: rgba(255, 255, 255, 0.08); }
+
+.dropdown-menu button.active {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+}
+
+.ctx-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 96;
+  min-width: 180px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.context-menu button {
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.context-menu button:hover { background: rgba(255, 255, 255, 0.08); }
+
+.context-menu button.danger { color: var(--danger); }
+
+.context-menu button.danger:hover {
+  background: color-mix(in srgb, var(--danger) 22%, transparent);
+}
+
+.scroll { overflow-y: auto; overflow-x: hidden; }
+.scroll::-webkit-scrollbar { width: 8px; }
+.scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.backdrop.fade-in { animation: backdrop-in .4s ease both; }
+.backdrop.fade-out { animation: backdrop-out .4s ease both; }
+
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes backdrop-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.backdrop-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.38);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Franja superior arrastrable; solo el racimo de botones pinta fondo. */
+.titlebar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 40px;
+  z-index: 50;
+}
+
+.window-cluster {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+  width: 80px;
+  height: 28px;
+  display: flex;
+  align-items: stretch;
+  background: rgba(0, 0, 0, 0.47);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 9px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  overflow: hidden;
+}
+
+.window-cluster button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+
+.window-cluster button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.window-cluster button.danger:hover {
+  background: color-mix(in srgb, var(--danger) 75%, transparent);
+  color: #ffffff;
+}
+
+.cluster-divider {
+  width: 1px;
+  margin: 6px 0;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.rail button {
+  width: 100%;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.rail button.active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.rail-favorites {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 2px;
+}
+
+.rail-favorites::-webkit-scrollbar { width: 4px; }
+.rail-favorites::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+
+.rail-fav {
+  flex: 0 0 auto;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: var(--surface-high);
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color .12s ease;
+}
+
+.rail-fav img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.rail-fav:hover { border-color: var(--accent); }
+
+.rail {
+  position: fixed;
+  left: 14px;
+  top: 56px;
+  bottom: 22px;
+  width: 64px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 6px;
+}
+
+.content {
+  position: fixed;
+  left: 104px;
+  top: 56px;
+  right: 26px;
+  bottom: 22px;
+  z-index: 10;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 16px;
+}
+
+.game-card {
+  width: 168px;
+  height: 246px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+
+.game-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px var(--glow);
+}
+
+.game-card .cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.game-card .title {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: 10px 8px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  background: linear-gradient(to top, rgba(0,0,0,0.85), transparent);
+}
+
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.modal {
+  width: min(520px, 90vw);
+  max-height: 80vh;
+  overflow: auto;
+  padding: 20px;
+}
+
+.toast-stack {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toast {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(0,0,0,0.75);
+  border: 1px solid rgba(255,255,255,0.1);
+  font-size: 13px;
+}
