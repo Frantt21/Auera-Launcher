@@ -4,6 +4,8 @@ use std::sync::mpsc::{self, Receiver, Sender};
 
 use serde::{Deserialize, Serialize};
 
+use crate::config;
+
 /// Color RGB independiente de la interfaz, para que el núcleo sirva al
 /// frontend web de Tauri.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -16,6 +18,68 @@ pub struct Rgb {
 impl Rgb {
     pub fn new(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b }
+    }
+}
+
+/// Entrada persistida: el tono solo vale mientras el arte no cambie.
+#[derive(Serialize, Deserialize)]
+struct Entry {
+    modified: u64,
+    color: Option<Rgb>,
+}
+
+fn cache_path() -> PathBuf {
+    config::data_dir().join("accents.json")
+}
+
+fn modified(path: &Path) -> u64 {
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Tonos resueltos en arranques anteriores; se descartan si el arte cambió.
+pub fn load_cache() -> HashMap<PathBuf, Option<Rgb>> {
+    read(&cache_path())
+}
+
+pub fn save_cache(cache: &HashMap<PathBuf, Option<Rgb>>) {
+    write(&cache_path(), cache);
+}
+
+fn read(path: &Path) -> HashMap<PathBuf, Option<Rgb>> {
+    let Ok(bytes) = std::fs::read(path) else {
+        return HashMap::new();
+    };
+    let entries: HashMap<String, Entry> = serde_json::from_slice(&bytes).unwrap_or_default();
+    entries
+        .into_iter()
+        .filter_map(|(path, entry)| {
+            let path = PathBuf::from(path);
+            (path.is_file() && modified(&path) == entry.modified).then_some((path, entry.color))
+        })
+        .collect()
+}
+
+fn write(path: &Path, cache: &HashMap<PathBuf, Option<Rgb>>) {
+    let entries: HashMap<String, Entry> = cache
+        .iter()
+        .map(|(path, color)| {
+            (
+                path.to_string_lossy().into_owned(),
+                Entry { modified: modified(path), color: *color },
+            )
+        })
+        .collect();
+    let Ok(bytes) = serde_json::to_vec(&entries) else {
+        return;
+    };
+    let temp = path.with_extension("tmp");
+    if std::fs::write(&temp, bytes).is_ok() {
+        let _ = std::fs::rename(&temp, path);
     }
 }
 
@@ -128,4 +192,29 @@ pub fn analyze(path: &Path) -> Option<Rgb> {
         }
     }
     Some(Rgb::new(rgb[0] as u8, rgb[1] as u8, rgb[2] as u8))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn guarda_y_recupera_el_tono() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/accent-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let art = dir.join("arte.png");
+        image::RgbImage::from_pixel(32, 32, image::Rgb([200, 40, 90]))
+            .save(&art)
+            .unwrap();
+        let file = dir.join("accents.json");
+        let _ = std::fs::remove_file(&file);
+
+        let missing = dir.join("no-existe.png");
+        let cache = HashMap::from([(art.clone(), analyze(&art)), (missing.clone(), None)]);
+        write(&file, &cache);
+
+        let loaded = read(&file);
+        assert_eq!(loaded.get(&art), Some(&cache[&art]));
+        assert!(!loaded.contains_key(&missing));
+    }
 }

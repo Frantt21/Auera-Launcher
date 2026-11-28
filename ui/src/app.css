@@ -4,8 +4,7 @@
   --surface-high: #1a1a22;
   --text: #f0f0f5;
   --muted: #9494a2;
-  --accent: #c49cff;
-  --accent-deep: #7a52d6;
+  --accent: #e6e6ec;
   --danger: #e25c5c;
   --ok: #70c88c;
   --radius: 14px;
@@ -174,29 +173,28 @@ button.danger {
   height: 100%;
   object-fit: cover;
   z-index: 0;
+  opacity: 0;
   pointer-events: none;
+  transition: opacity .45s ease;
 }
 
-.backdrop.fade-in { animation: backdrop-in .4s ease both; }
-.backdrop.fade-out { animation: backdrop-out .4s ease both; }
-
-@keyframes backdrop-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes backdrop-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
+/* La capa entrante queda encima para que el cruce no oscurezca el fondo. */
+.backdrop.visible {
+  opacity: 1;
+  z-index: 1;
 }
 
 .backdrop-dim {
   position: absolute;
   inset: 0;
   background: rgba(0,0,0,0.38);
-  z-index: 1;
+  z-index: 2;
+  opacity: 0;
   pointer-events: none;
+  transition: opacity .45s ease;
 }
+
+.backdrop-dim.visible { opacity: 1; }
 
 /* Franja superior arrastrable; solo el racimo de botones pinta fondo. */
 .titlebar {
@@ -328,6 +326,111 @@ button.danger {
   z-index: 10;
 }
 
+/* Ficha de juego: logo y acciones a la izquierda, resumen abajo a la derecha. */
+.detail { position: absolute; inset: 0; }
+
+.detail-back {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.detail-back:hover { background: rgba(255, 255, 255, 0.12); }
+
+.detail-main {
+  position: absolute;
+  left: 40px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 22px;
+  max-width: min(46%, 420px);
+}
+
+.detail-logo {
+  max-width: 320px;
+  max-height: 190px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.55));
+}
+
+.detail-title { margin: 0; font-size: 40px; font-weight: 700; line-height: 1.1; }
+
+.detail-actions { display: flex; gap: 12px; }
+
+.detail-play {
+  height: 46px;
+  padding: 0 52px;
+  border: none;
+  border-radius: 23px;
+  background: var(--btn-bg);
+  color: var(--btn-ink);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .4s ease, filter .2s ease;
+}
+
+.detail-play:hover:not(:disabled) { filter: brightness(1.12); }
+
+.detail-play:disabled {
+  background: var(--surface-high);
+  color: var(--muted);
+  cursor: default;
+}
+
+.detail-options {
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.detail-options:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.36);
+}
+
+.detail-info {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 34px;
+  padding: 14px 20px;
+  border-radius: 16px;
+}
+
+.detail-info span {
+  display: block;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.detail-info b { display: block; margin-top: 4px; font-size: 13px; font-weight: 600; }
+
+.detail-platform { text-transform: capitalize; }
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
@@ -346,7 +449,7 @@ button.danger {
 
 .game-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0px 0px 30px var(--glow);
+  box-shadow: 0 0 0 4px var(--glow);
 }
 
 .game-card .cover {

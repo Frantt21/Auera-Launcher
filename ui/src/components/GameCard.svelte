@@ -4,7 +4,7 @@
 
   export let game;
   export let mediaBase;
-  export let accent = "#c49cff";
+  export let accent = "#e6e6ec";
 
   export let onClick = () => {};
   export let onFavorite = () => {};

@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import Titlebar from "./components/Titlebar.svelte";
@@ -23,13 +23,13 @@
   let view = "library";
   let selectedId = null;
   let selectedGame = null;
-  let selectedAccent = "#c49cff";
-  let selectedAccentRgb = { r: 196, g: 156, b: 255 };
+  let selectedAccent = "#e6e6ec";
+  let selectedAccentRgb = { r: 230, g: 230, b: 236 };
 
-  // Fondo del juego enfocado: dos capas para cruzar con fundido.
-  let bgCurrent = null;
-  let bgPrevious = null;
-  let bgTimer = null;
+  // Fondo del juego enfocado: dos capas alternas que se cruzan con fundido.
+  let bgUrls = [null, null];
+  let bgNodes = [null, null];
+  let bgActive = -1;
   let bgKey = null;
   let hoverTimer = null;
 
@@ -80,11 +80,21 @@
     } catch {}
   }
 
-  function setBackdrop(url) {
-    clearTimeout(bgTimer);
-    bgPrevious = bgCurrent;
-    bgCurrent = url;
-    if (bgPrevious) bgTimer = setTimeout(() => { bgPrevious = null; }, 420);
+  // La capa nueva solo se muestra cuando su imagen ya está decodificada:
+  // así el fundido no deja un fotograma vacío entre juegos.
+  async function setBackdrop(url) {
+    if (!url) {
+      bgActive = -1;
+      return;
+    }
+    if (bgActive >= 0 && bgUrls[bgActive] === url) return;
+    const next = bgActive === 0 ? 1 : 0;
+    bgUrls = next === 0 ? [url, bgUrls[1]] : [bgUrls[0], url];
+    await tick();
+    const node = bgNodes[next];
+    if (node) await node.decode().catch(() => {});
+    if (bgUrls[next] !== url) return;
+    bgActive = next;
   }
 
   async function showBackdrop(id) {
@@ -101,13 +111,10 @@
   }
 
   // Retrasa la carga del fondo mientras el ratón barre varias tarjetas.
+  // Al salir se conserva el último fondo: el cambio solo ocurre sobre otro juego.
   function hoverBackdrop(id) {
     clearTimeout(hoverTimer);
-    if (!id) {
-      showBackdrop(null);
-      return;
-    }
-    if (id === bgKey) return;
+    if (!id || id === bgKey) return;
     hoverTimer = setTimeout(() => showBackdrop(id), 60);
   }
 
@@ -231,15 +238,13 @@
 </script>
 
 <div class="shell">
-  {#if bgPrevious}
-    <img class="backdrop fade-out" src={bgPrevious} alt="" />
+  {#if bgUrls[0]}
+    <img class="backdrop" class:visible={bgActive === 0} src={bgUrls[0]} alt="" bind:this={bgNodes[0]} />
   {/if}
-  {#if bgCurrent}
-    <img class="backdrop fade-in" src={bgCurrent} alt="" />
+  {#if bgUrls[1]}
+    <img class="backdrop" class:visible={bgActive === 1} src={bgUrls[1]} alt="" bind:this={bgNodes[1]} />
   {/if}
-  {#if bgCurrent || bgPrevious}
-    <div class="backdrop-dim"></div>
-  {/if}
+  <div class="backdrop-dim" class:visible={bgActive >= 0}></div>
 
   <Titlebar />
   <Rail
@@ -263,7 +268,7 @@
       <Library
         games={visibleGames}
         {mediaBase}
-        accentFor={(g) => accentMap[g.id] ?? "#c49cff"}
+        accentFor={(g) => accentMap[g.id] ?? "#e6e6ec"}
         onSelect={(g) => { selectedId = g.id; view = "detail"; }}
         onHover={(g) => hoverBackdrop(g ? g.id : null)}
         onFavorite={onFavorite}
