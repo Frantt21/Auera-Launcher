@@ -17,7 +17,7 @@ use crate::prefix::{self, Proton};
 use crate::prefs::Prefs;
 use crate::scan;
 
-pub const DEFAULT_ACCENT: Rgb = Rgb { r: 196, g: 156, b: 255 };
+pub const DEFAULT_ACCENT: Rgb = Rgb { r: 230, g: 230, b: 236 };
 
 #[derive(Clone, serde::Serialize)]
 pub struct Busy {
@@ -73,7 +73,7 @@ impl Service {
             prefs: Mutex::new(prefs),
             protons,
             protondb_cache: Mutex::new(cache),
-            accents: Mutex::new(HashMap::new()),
+            accents: Mutex::new(accent::load_cache()),
             log: Mutex::new(Vec::new()),
             scanning: AtomicBool::new(false),
             prefix_scanning: AtomicBool::new(false),
@@ -150,7 +150,12 @@ impl Service {
                 continue;
             }
             let color = accent::analyze(&path);
-            self.accents.lock().unwrap().insert(path, color);
+            let snapshot = {
+                let mut cache = self.accents.lock().unwrap();
+                cache.insert(path, color);
+                cache.clone()
+            };
+            accent::save_cache(&snapshot);
             if let Some(color) = color {
                 return color;
             }
