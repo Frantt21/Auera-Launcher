@@ -19,6 +19,8 @@
     <path d="M5 12h14" />
   {:else if name === "max"}
     <rect x="4" y="4" width="16" height="16" rx="2" />
+  {:else if name === "check"}
+    <path d="m20 6-11 11-5-5" />
   {:else if name === "back"}
     <path d="m15 18-6-6 6-6" />
   {:else if name === "chevron"}

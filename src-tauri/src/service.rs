@@ -163,6 +163,30 @@ impl Service {
         DEFAULT_ACCENT
     }
 
+    /// Tonos ya resueltos para el arranque de la interfaz: evita una petición por juego
+    /// y que las tarjetas aparezcan sin acento mientras llegan.
+    pub fn accent_map(&self) -> HashMap<String, Rgb> {
+        let arts: Vec<(String, Vec<PathBuf>)> = {
+            let lib = self.library.lock().unwrap();
+            lib.games
+                .iter()
+                .map(|g| {
+                    let paths = g.art.cover.iter().chain(g.art.logo.iter()).cloned().collect();
+                    (g.id.clone(), paths)
+                })
+                .collect()
+        };
+        let accents = self.accents.lock().unwrap();
+        arts.into_iter()
+            .filter_map(|(id, paths)| {
+                let color = paths
+                    .into_iter()
+                    .find_map(|path| accents.get(&path).copied().flatten())?;
+                Some((id, color))
+            })
+            .collect()
+    }
+
     pub fn backdrop_for(&self, id: &str) -> Option<String> {
         let game = self.library.lock().unwrap().get(id).cloned()?;
         let source = game.art.hero.clone().or(game.art.cover.clone())?;
@@ -487,6 +511,53 @@ pub fn pick_art(app: AppHandle, id: String, sgdb_id: u32) {
     start_art(app.clone(), Some(id));
 }
 
+/// Prefijo elegido a mano en el diálogo del juego: se valida y se saca el
+/// Proton del propio prefijo cuando lo tiene.
+pub fn pick_prefix(app: AppHandle, id: String, chosen: String) {
+    let service = app.state::<Service>();
+    let Some(prefix) = prefix::normalize(&prefix::expand(&chosen)) else {
+        service.toast("Esa carpeta no es un prefijo Wine".into());
+        return;
+    };
+    let proton = prefix::proton_label(&prefix::compat_dir(&prefix))
+        .and_then(|label| prefix::best_proton(&service.protons, &label));
+    {
+        let mut lib = service.library.lock().unwrap();
+        if let Some(stored) = lib.get_mut(&id) {
+            stored.prefix = Some(prefix);
+            if proton.is_some() {
+                stored.proton = proton;
+            }
+        }
+        lib.save();
+    }
+    service.emit_library();
+    service.toast("Prefijo asignado".into());
+}
+
+pub fn pick_executable(app: AppHandle, id: String, chosen: String) {
+    let service = app.state::<Service>();
+    let path = prefix::expand(&chosen);
+    if !path.is_file() {
+        service.toast("Ese archivo no existe".into());
+        return;
+    }
+    let platform = scan::detect_platform(Some(&path));
+    {
+        let mut lib = service.library.lock().unwrap();
+        if let Some(stored) = lib.get_mut(&id) {
+            stored.install_dir = path.parent().unwrap_or(&path).to_path_buf();
+            stored.executable = Some(path);
+            stored.manual_exe = true;
+            stored.platform = platform;
+            stored.platform_locked = true;
+        }
+        lib.save();
+    }
+    service.emit_library();
+    service.toast("Ejecutable asignado".into());
+}
+
 pub fn compute_size(app: AppHandle, id: String) {
     let app2 = app.clone();
     std::thread::spawn(move || {
@@ -564,8 +635,10 @@ pub fn detect_prefix(app: AppHandle, id: String) {
             }
             service.emit_library();
             service.log("Prefijo detectado".into());
-        } else {
+        } else if game.platform == Platform::Windows {
             app2.state::<Service>().toast("No se encontró prefijo".into());
+        } else {
+            app2.state::<Service>().toast("Juego nativo: no necesita prefijo".into());
         }
     });
 }

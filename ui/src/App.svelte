@@ -11,6 +11,8 @@
   import Icon from "./components/Icon.svelte";
   import { rgbToHex } from "./lib/tauri";
 
+  const DEFAULT_ACCENT = "#e6e6ec";
+
   let cfg = null;
   let prefs = { sort: "recent", source: null, platform: null, favorites_only: false };
   let games = [];
@@ -23,7 +25,7 @@
   let view = "library";
   let selectedId = null;
   let selectedGame = null;
-  let selectedAccent = "#e6e6ec";
+  let selectedAccent = DEFAULT_ACCENT;
   let selectedAccentRgb = { r: 230, g: 230, b: 236 };
 
   // Fondo del juego enfocado: dos capas alternas que se cruzan con fundido.
@@ -37,13 +39,16 @@
   let candidates = null;
   let contextMenu = null;
   let pendingDelete = null;
+  let detailOptions = false;
+  let query = "";
 
   let accentMap = {};
-  const fetchedAccents = new Set();
   let accentQueue = [];
   let accentWorkers = 0;
+  const accentTries = new Map();
   let fatal = null;
 
+  $: queueAccents(games.filter((g) => !accentMap[g.id]));
   $: selectedGame = games.find((g) => g.id === selectedId) ?? null;
   $: visibleGames = sortGames(games, prefs);
   $: favoriteGames = visibleGames.filter((g) => g.favorite);
@@ -118,6 +123,11 @@
     hoverTimer = setTimeout(() => showBackdrop(id), 60);
   }
 
+  // En la ficha manda el fondo del juego abierto: el rail no lo cambia.
+  function hoverRail(game) {
+    if (view !== "detail") hoverBackdrop(game ? game.id : null);
+  }
+
   // Prepara los fondos de la primera pantalla para que el primer hover sea inmediato.
   async function warmBackdrops() {
     for (const g of games.slice(0, 20)) {
@@ -126,20 +136,31 @@
     }
   }
 
-  async function fetchAccents() {
-    for (const g of games) {
-      if (fetchedAccents.has(g.id)) continue;
-      fetchedAccents.add(g.id);
+  function queueAccents(list) {
+    const queued = new Set(accentQueue);
+    for (const g of list) {
+      if (queued.has(g.id)) continue;
       accentQueue.push(g.id);
+      queued.add(g.id);
     }
-    // Pocos a la vez: cada análisis decodifica una imagen en el backend.
+    pumpAccents();
+  }
+
+  // Pocos a la vez: cada análisis sin caché decodifica una imagen en el backend.
+  function pumpAccents() {
     while (accentWorkers < 4 && accentQueue.length > 0) {
       const id = accentQueue.shift();
       accentWorkers++;
       invoke("accent", { id, preferLogo: false })
-        .then((rgb) => { accentMap[id] = rgbToHex(rgb.r, rgb.g, rgb.b); accentMap = { ...accentMap }; })
-        .catch(() => {})
-        .finally(() => { accentWorkers--; fetchAccents(); });
+        .then((rgb) => { accentMap = { ...accentMap, [id]: rgbToHex(rgb.r, rgb.g, rgb.b) }; })
+        // Un backend que se reinicia en dev no debe dejar el juego sin acento.
+        .catch(() => {
+          const tries = (accentTries.get(id) ?? 0) + 1;
+          accentTries.set(id, tries);
+          if (tries > 3) accentMap = { ...accentMap, [id]: DEFAULT_ACCENT };
+          else setTimeout(() => { accentQueue.push(id); pumpAccents(); }, 600 * tries);
+        })
+        .finally(() => { accentWorkers--; pumpAccents(); });
     }
   }
 
@@ -149,6 +170,9 @@
       cfg = b.cfg;
       prefs = b.prefs;
       games = b.games;
+      accentMap = Object.fromEntries(
+        Object.entries(b.accents ?? {}).map(([id, c]) => [id, rgbToHex(c.r, c.g, c.b)])
+      );
       protons = b.protons;
       mediaBase = b.media_base;
       busy = b.busy;
@@ -158,7 +182,7 @@
       return;
     }
 
-    await listen("library", (e) => { games = e.payload; fetchAccents(); });
+    await listen("library", (e) => { games = e.payload; });
     await listen("busy", (e) => { busy = e.payload; });
     await listen("log", (e) => { log = e.payload; });
     await listen("toast", (e) => { pushToast(e.payload); });
@@ -166,7 +190,6 @@
     await listen("gamepad-name", (e) => { gamepadName = e.payload; });
     await listen("gamepad", (e) => { handleGamepad(e.payload); });
 
-    fetchAccents();
     setTimeout(warmBackdrops, 1200);
   });
 
@@ -188,8 +211,16 @@
     contextMenu = {
       game,
       x: Math.min(e.clientX, window.innerWidth - 190),
-      y: Math.min(e.clientY, window.innerHeight - 92),
+      y: Math.min(e.clientY, window.innerHeight - 130),
     };
+  }
+
+  function openSettings() {
+    const game = contextMenu.game;
+    contextMenu = null;
+    selectedId = game.id;
+    view = "detail";
+    detailOptions = true;
   }
 
   async function refreshBackdrop() {
@@ -212,8 +243,10 @@
     showBackdrop(null);
   }
 
-  async function onFavorite(g) {
-    await invoke("toggle_favorite", { id: g.id });
+  async function toggleFavorite() {
+    const game = contextMenu.game;
+    contextMenu = null;
+    await invoke("toggle_favorite", { id: game.id });
   }
   async function onChanged() {
     // refresh game list
@@ -246,15 +279,22 @@
   {/if}
   <div class="backdrop-dim" class:visible={bgActive >= 0}></div>
 
-  <Titlebar />
+  <Titlebar
+    {query}
+    onQuery={(q) => (query = q)}
+    {prefs}
+    onPrefsChange={(p) => applyPrefs(p)}
+    back={view === "detail"}
+    onBack={() => { view = "library"; showBackdrop(null); }}
+  />
   <Rail
     {view}
     onNavigate={(v) => { view = v; if (v !== "detail") showBackdrop(null); }}
     {gamepadName}
     favorites={favoriteGames}
     {mediaBase}
-    onOpen={(g) => { selectedId = g.id; view = "detail"; }}
-    onHover={(g) => hoverBackdrop(g ? g.id : null)}
+    onOpen={(g) => { selectedId = g.id; detailOptions = false; view = "detail"; }}
+    onHover={hoverRail}
     onContext={openContext}
   />
 
@@ -268,13 +308,11 @@
       <Library
         games={visibleGames}
         {mediaBase}
-        accentFor={(g) => accentMap[g.id] ?? "#e6e6ec"}
-        onSelect={(g) => { selectedId = g.id; view = "detail"; }}
+        accentFor={(g) => accentMap[g.id] ?? DEFAULT_ACCENT}
+        onSelect={(g) => { selectedId = g.id; detailOptions = false; view = "detail"; }}
         onHover={(g) => hoverBackdrop(g ? g.id : null)}
-        onFavorite={onFavorite}
-        prefs={prefs}
-        onPrefsChange={(p) => applyPrefs(p)}
         onContext={openContext}
+        {query}
       />
     {:else if view === "detail" && selectedGame}
       <Detail
@@ -282,8 +320,8 @@
         {mediaBase}
         accent={selectedAccent}
         accentRgb={selectedAccentRgb}
-        onBack={() => { view = "library"; showBackdrop(null); }}
         onChanged={onChanged}
+        bind:optionsOpen={detailOptions}
       />
     {:else if view === "settings" && cfg}
       <Settings
@@ -304,6 +342,8 @@
       oncontextmenu={(e) => { e.preventDefault(); contextMenu = null; }}
     ></div>
     <div class="context-menu glass" style={`top:${contextMenu.y}px;left:${contextMenu.x}px;`}>
+      <button onclick={openSettings}>Ajustes</button>
+      <button onclick={toggleFavorite}>{contextMenu.game.favorite ? "Quitar favorito" : "Favorito"}</button>
       <button onclick={refreshBackdrop}>Recalcular hover</button>
       <button class="danger" onclick={() => { pendingDelete = contextMenu.game; contextMenu = null; }}>Eliminar</button>
     </div>

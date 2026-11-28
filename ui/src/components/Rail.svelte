@@ -29,8 +29,8 @@
         oncontextmenu={(e) => { e.preventDefault(); onContext(e, game); }}
         title={game.title}
       >
-        {#if game.art.cover}
-          <img src={mediaUrl(mediaBase, game.art.cover, 104)} alt={game.title} loading="lazy" />
+        {#if game.art.icon}
+          <img src={mediaUrl(mediaBase, game.art.icon, 104)} alt={game.title} loading="lazy" />
         {:else}
           <span>{game.title.slice(0, 2).toUpperCase()}</span>
         {/if}

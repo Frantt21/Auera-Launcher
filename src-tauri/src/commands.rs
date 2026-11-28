@@ -17,6 +17,7 @@ pub struct Bootstrap {
     pub media_base: String,
     pub busy: service::Busy,
     pub log: Vec<String>,
+    pub accents: std::collections::HashMap<String, Rgb>,
 }
 
 #[tauri::command]
@@ -30,6 +31,7 @@ pub fn bootstrap(state: State<Service>) -> Bootstrap {
         media_base: crate::media::base().to_string(),
         busy: state.busy(),
         log: state.log.lock().unwrap().clone(),
+        accents: state.accent_map(),
     }
 }
 
@@ -64,6 +66,16 @@ pub fn compute_size(app: AppHandle, id: String) {
 }
 
 #[tauri::command]
+pub fn pick_prefix(app: AppHandle, id: String, path: String) {
+    service::pick_prefix(app, id, path);
+}
+
+#[tauri::command]
+pub fn pick_executable(app: AppHandle, id: String, path: String) {
+    service::pick_executable(app, id, path);
+}
+
+#[tauri::command]
 pub fn create_prefix(app: AppHandle, id: String, proton_label: String) {
     service::create_prefix(app, id, proton_label);
 }
@@ -95,6 +107,15 @@ pub async fn backdrop(app: AppHandle, id: String) -> Option<String> {
         .await
         .ok()
         .flatten()
+}
+
+#[tauri::command]
+pub async fn warm_media(path: String, width: u32) -> bool {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::media::allowed(&path).is_some_and(|p| crate::media::warm(&p, width))
+    })
+    .await
+    .unwrap_or(false)
 }
 
 #[tauri::command]

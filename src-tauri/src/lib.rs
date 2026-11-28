@@ -22,6 +22,7 @@ use tauri::Manager;
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .register_uri_scheme_protocol("auera", |_ctx, request| media::respond(&request))
         .setup(|app| {
             let service = service::Service::new(app.handle().clone());
@@ -48,10 +49,13 @@ pub fn run() {
             commands::compute_size,
             commands::create_prefix,
             commands::detect_prefix,
+            commands::pick_prefix,
+            commands::pick_executable,
             commands::play,
             commands::accent,
             commands::backdrop,
             commands::refresh_backdrop,
+            commands::warm_media,
             commands::set_config,
             commands::set_prefs,
             commands::update_game,

@@ -9,16 +9,29 @@ export function mediaUrl(base, path, width = 0) {
   return width > 0 ? `${base}/media?path=${q}&w=${width}` : `${base}/media?path=${q}`;
 }
 
+// Pide la miniatura antes de pedir la URL: así el protocolo solo lee caché.
+const warmed = new Map();
+
+export function warmMedia(path, width) {
+  const key = `${path}|${width}`;
+  let job = warmed.get(key);
+  if (!job) {
+    job = invoke("warm_media", { path, width }).catch(() => false);
+    warmed.set(key, job);
+  }
+  return job;
+}
+
 export function rgbToHex(r, g, b) {
   return "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
 }
 
-export function glowOf(hex) {
+// Acento legible sobre el fondo: los tonos oscuros se suben de luz sin cambiar de tono.
+export function glowRgb(hex) {
   const n = parseInt(hex.slice(1), 16);
   let r = (n >> 16) & 255;
   let g = (n >> 8) & 255;
   let b = n & 255;
-  // Los acentos oscuros sumían el halo en el fondo: se suben de luz conservando el tono.
   const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
   if (luma < 96) {
     const k = Math.min(3, 96 / Math.max(luma, 24));
@@ -26,7 +39,12 @@ export function glowOf(hex) {
     g = Math.round(Math.min(255, g * k + 30));
     b = Math.round(Math.min(255, b * k + 30));
   }
-  return `rgba(${r}, ${g}, ${b}, 0.65)`;
+  return { r, g, b };
+}
+
+export function glowOf(hex) {
+  const { r, g, b } = glowRgb(hex);
+  return `rgb(${r}, ${g}, ${b})`;
 }
 
 export function accentInk(rgb) {

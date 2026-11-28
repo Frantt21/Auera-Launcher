@@ -52,7 +52,9 @@ impl Library {
             match self.games.iter_mut().find(|g| g.id == fresh.id) {
                 Some(existing) => {
                     existing.title = fresh.title;
-                    existing.executable = fresh.executable.or(existing.executable.clone());
+                    if !existing.manual_exe {
+                        existing.executable = fresh.executable.or(existing.executable.clone());
+                    }
                     existing.install_dir = fresh.install_dir;
                     if !existing.platform_locked {
                         existing.platform = fresh.platform;

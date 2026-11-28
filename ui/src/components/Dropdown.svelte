@@ -4,6 +4,10 @@
   export let value;
   export let options = [];
   export let onChange = () => {};
+  // Acciones sueltas bajo el separador, como marcar solo favoritos.
+  export let extras = [];
+
+  const MENU_WIDTH = 170;
 
   let open = false;
   let toggle;
@@ -14,8 +18,14 @@
   // El menú va en coordenadas de ventana para que el scroll de la lista no lo recorte.
   function show() {
     const rect = toggle.getBoundingClientRect();
-    anchor = { top: rect.bottom + 6, left: rect.left };
+    const left = Math.max(12, Math.min(rect.left, window.innerWidth - MENU_WIDTH - 12));
+    anchor = { top: rect.bottom + 6, left };
     open = true;
+  }
+
+  function run(extra) {
+    open = false;
+    extra.onSelect();
   }
 
   function choose(next) {
@@ -35,6 +45,15 @@
       {#each options as opt (opt.value)}
         <button class:active={opt.value === value} onclick={() => choose(opt.value)}>{opt.label}</button>
       {/each}
+      {#if extras.length}
+        <div class="dropdown-divider"></div>
+        {#each extras as extra}
+          <button class="dropdown-extra" class:active={extra.active} onclick={() => run(extra)}>
+            <Icon name="check" size={12} />
+            <span>{extra.label}</span>
+          </button>
+        {/each}
+      {/if}
     </div>
   {/if}
 </div>
