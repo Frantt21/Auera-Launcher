@@ -32,12 +32,10 @@ pub fn respond(request: &tauri::http::Request<Vec<u8>>) -> Response<Vec<u8>> {
     let Some(path_param) = path_param else {
         return not_found();
     };
-    let path = PathBuf::from(path_param);
-    let Ok(path) = path.canonicalize() else {
+    let Ok(path) = PathBuf::from(&path_param).canonicalize() else {
         return not_found();
     };
-    let root = std::fs::canonicalize(crate::config::data_dir()).unwrap_or_else(|_| crate::config::data_dir());
-    if !path.starts_with(&root) {
+    if !inside(&path) {
         return forbidden();
     }
 
@@ -65,6 +63,23 @@ pub fn respond(request: &tauri::http::Request<Vec<u8>>) -> Response<Vec<u8>> {
             .unwrap_or_else(|_| not_found()),
         Err(_) => not_found(),
     }
+}
+
+fn inside(path: &Path) -> bool {
+    let root = std::fs::canonicalize(crate::config::data_dir()).unwrap_or_else(|_| crate::config::data_dir());
+    path.starts_with(root)
+}
+
+/// Solo se sirve y prepara arte dentro del directorio de datos de la app.
+pub fn allowed(path_param: &str) -> Option<PathBuf> {
+    let path = PathBuf::from(path_param).canonicalize().ok()?;
+    inside(&path).then_some(path)
+}
+
+/// Deja lista la versión reducida fuera del hilo del protocolo: generarla al
+/// servirla bloquea la interfaz mientras se decodifica y recodifica el arte.
+pub fn warm(path: &Path, width: u32) -> bool {
+    width > 0 && resize_cached(path, width).is_ok()
 }
 
 fn not_found() -> Response<Vec<u8>> {

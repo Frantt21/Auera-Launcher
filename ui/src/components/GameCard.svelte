@@ -1,13 +1,11 @@
 <script>
   import { mediaUrl, glowOf } from "../lib/tauri";
-  import Icon from "./Icon.svelte";
 
   export let game;
   export let mediaBase;
   export let accent = "#e6e6ec";
 
   export let onClick = () => {};
-  export let onFavorite = () => {};
   export let onHover = () => {};
   export let onContext = () => {};
 
@@ -17,7 +15,7 @@
 
 <div
   class="game-card"
-  style={`--accent:${accent};--glow:${glow};`}
+  style={`--glow:${glow};`}
   onclick={() => onClick(game)}
   onmouseenter={() => onHover(game)}
   onmouseleave={() => onHover(null)}
@@ -31,14 +29,6 @@
     </div>
   {/if}
   <div class="title">{game.title}</div>
-  <button
-    class="ghost"
-    style="position:absolute;top:6px;right:6px;padding:4px 6px;"
-    onclick={(e) => { e.stopPropagation(); onFavorite(game); }}
-    aria-label="favorite"
-  >
-    <Icon name="heart" size={14} />
-  </button>
   {#if game.favorite}
     <span style="position:absolute;top:8px;left:8px;color:#ffd166;">★</span>
   {/if}

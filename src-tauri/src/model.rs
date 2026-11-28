@@ -138,6 +138,9 @@ pub struct Game {
     #[serde(default)]
     pub app_id: Option<u32>,
     pub executable: Option<PathBuf>,
+    /// Elegido a mano: los escaneos no lo sobrescriben.
+    #[serde(default)]
+    pub manual_exe: bool,
     pub install_dir: PathBuf,
     pub platform: Platform,
     #[serde(default)]
@@ -173,6 +176,7 @@ impl Game {
             source,
             app_id: None,
             executable: None,
+            manual_exe: false,
             install_dir,
             platform: Platform::current(),
             platform_locked: false,

@@ -1,19 +1,55 @@
 <script>
   import { invoke } from "@tauri-apps/api/core";
-  import { mediaUrl, accentInk } from "../lib/tauri";
+  import { open } from "@tauri-apps/plugin-dialog";
+  import { mediaUrl, accentInk, glowRgb, warmMedia } from "../lib/tauri";
   import Icon from "./Icon.svelte";
 
   export let game;
   export let mediaBase = "";
   export let accent = "#e6e6ec";
   export let accentRgb = { r: 230, g: 230, b: 236 };
-  export let onBack = () => {};
   export let onChanged = () => {};
+  // Se puede abrir desde el menú contextual de una tarjeta.
+  export let optionsOpen = false;
+
+  const LOGO_WIDTH = 512;
 
   let busy = false;
-  let optionsOpen = false;
+  let logoPath = null;
+  let logoUrl = null;
 
-  $: logoUrl = game.art.logo ? mediaUrl(mediaBase, game.art.logo, 512) : null;
+  // El título se muestra al instante y el logo entra cuando su miniatura ya
+  // está en caché; pedirla sin preparar congelaba la interfaz.
+  $: if (game.art.logo !== logoPath) loadLogo(game.art.logo);
+
+  async function loadLogo(path) {
+    logoPath = path;
+    logoUrl = null;
+    if (!path) return;
+    await warmMedia(path, LOGO_WIDTH);
+    if (logoPath !== path) return;
+    logoUrl = mediaUrl(mediaBase, path, LOGO_WIDTH);
+  }
+
+  // Editables a mano: el selector nativo devuelve la ruta y el backend la valida.
+  async function pickPrefix() {
+    const path = await open({ directory: true, multiple: false, title: "Elegir prefijo Wine" });
+    if (typeof path !== "string") return;
+    await invoke("pick_prefix", { id: game.id, path });
+    onChanged();
+  }
+
+  async function pickExecutable() {
+    const path = await open({ multiple: false, title: "Elegir ejecutable del juego" });
+    if (typeof path !== "string") return;
+    await invoke("pick_executable", { id: game.id, path });
+    onChanged();
+  }
+
+  // Mismo color que el halo de las tarjetas, para que el botón no herede acentos apagados.
+  $: glowRgbValue = /^#[0-9a-f]{6}$/i.test(accent) ? glowRgb(accent) : accentRgb;
+  $: glow = `rgb(${glowRgbValue.r}, ${glowRgbValue.g}, ${glowRgbValue.b})`;
+  $: glowInk = accentInk(glowRgbValue);
   $: playtime =
     game.playtime_min === 0
       ? "—"
@@ -31,10 +67,6 @@
 </script>
 
 <div class="detail">
-  <button class="detail-back" onclick={onBack} aria-label="Volver">
-    <Icon name="back" size={18} />
-  </button>
-
   <div class="detail-main">
     {#if logoUrl}
       <img class="detail-logo" src={logoUrl} alt={game.title} />
@@ -44,7 +76,7 @@
     <div class="detail-actions">
       <button
         class="detail-play"
-        style={`--btn-bg:${accent};--btn-ink:${accentInk(accentRgb)};`}
+        style={`--glow:${glow};--glow-ink:${glowInk};`}
         disabled={busy || game.blocked}
         onclick={play}
       >
@@ -67,8 +99,21 @@
   <div class="modal-backdrop" onclick={() => (optionsOpen = false)}>
     <div class="modal glass" onclick={(e) => e.stopPropagation()}>
       <h3 style="margin-top:0;">Opciones</h3>
-      <p style="opacity:.7;font-size:13px;">Prefijo, Proton y arte se gestionan desde aquí.</p>
+      <dl class="game-paths">
+        <dt>Ejecutable</dt>
+        <dd class:empty={!game.executable}>{game.executable ?? "Sin detectar"}</dd>
+        <dt>Prefijo</dt>
+        <dd class:empty={!game.prefix}>{game.prefix ?? "Sin detectar"}</dd>
+        {#if game.proton}
+          <dt>Proton</dt>
+          <dd>{game.proton}</dd>
+        {/if}
+      </dl>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="ghost" onclick={pickPrefix}>Elegir prefijo…</button>
+        <button class="ghost" onclick={pickExecutable}>Elegir ejecutable…</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
         <button class="ghost" onclick={async () => { await invoke("detect_prefix", { id: game.id }); onChanged(); }}>Detectar prefijo</button>
         <button class="ghost" onclick={async () => { await invoke("create_prefix", { id: game.id, protonLabel: game.proton ?? "" }); onChanged(); }}>Crear prefijo</button>
       </div>

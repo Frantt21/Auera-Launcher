@@ -1,42 +1,55 @@
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 use serde_json::Value;
 
 use super::{detect_platform, home_dir};
 use crate::model::{Game, Source};
 
+/// Juego instalado según la base de Hydra. Los prefijos se resuelven aparte,
+/// porque Hydra puede apuntar a un compatdata de Steam o a un prefijo propio.
+#[derive(Debug, Clone)]
+pub struct HydraGame {
+    pub object_id: String,
+    pub shop: String,
+    pub title: String,
+    pub executable: PathBuf,
+    pub wine_prefix: Option<PathBuf>,
+    pub proton_path: Option<PathBuf>,
+    pub steam_shortcut: Option<u32>,
+    pub playtime_min: u64,
+    pub last_played: Option<i64>,
+}
+
 /// Hydra guarda su biblioteca en LevelDB (`hydra-db`), sin formato público.
 /// Se leen los JSON de los segmentos y se validan las rutas contra el disco.
 pub fn scan(out: &mut Vec<Game>) {
-    let mut seen = HashSet::new();
-    for root in data_dirs() {
-        let Ok(entries) = std::fs::read_dir(&root) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let ext = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or_default();
-            if !matches!(ext, "ldb" | "log") {
-                continue;
-            }
-            let Ok(bytes) = std::fs::read(&path) else {
-                continue;
-            };
-            for game in read_games(&bytes) {
-                if seen.insert(game.id.clone()) {
-                    out.push(game);
-                }
-            }
-        }
+    for entry in installed() {
+        out.push(to_game(entry));
     }
+}
+
+/// Entradas instaladas, con caché por huella de la base: la detección de
+/// prefijos las consulta juego a juego.
+pub fn installed() -> Vec<HydraGame> {
+    static CACHE: OnceLock<Mutex<(u64, Vec<HydraGame>)>> = OnceLock::new();
+    let stamp = fingerprint();
+    let cache = CACHE.get_or_init(|| Mutex::new((0, Vec::new())));
+    let mut guard = cache.lock().unwrap();
+    if guard.0 == stamp && !guard.1.is_empty() {
+        return guard.1.clone();
+    }
+    let games = read_all();
+    *guard = (stamp, games.clone());
+    games
 }
 
 pub fn launcher_dirs() -> Vec<PathBuf> {
     let mut dirs = vec![home_dir().join(".config/hydralauncher")];
+    if let Some(data) = dirs::data_dir() {
+        dirs.push(data.join("hydralauncher"));
+    }
     if let Ok(appdata) = std::env::var("APPDATA") {
         dirs.push(PathBuf::from(&appdata).join("hydra"));
         dirs.push(PathBuf::from(appdata).join("hydralauncher"));
@@ -53,32 +66,85 @@ fn data_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-fn read_games(bytes: &[u8]) -> Vec<Game> {
+fn db_files() -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    for root in data_dirs() {
+        let Ok(entries) = std::fs::read_dir(&root) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or_default();
+            if matches!(ext, "ldb" | "log") {
+                files.push(path);
+            }
+        }
+    }
+    files
+}
+
+/// Suma de tamaño y fecha de los segmentos: si Hydra instala algo, cambia.
+fn fingerprint() -> u64 {
+    db_files()
+        .iter()
+        .filter_map(|path| std::fs::metadata(path).ok())
+        .map(|meta| {
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            meta.len() ^ modified
+        })
+        .fold(0, u64::wrapping_add)
+}
+
+fn read_all() -> Vec<HydraGame> {
+    let mut found = Vec::new();
+    let mut seen = HashSet::new();
+    for path in db_files() {
+        let Ok(bytes) = std::fs::read(&path) else {
+            continue;
+        };
+        for game in read_games(&bytes) {
+            if seen.insert(game.object_id.clone()) {
+                found.push(game);
+            }
+        }
+    }
+    found
+}
+
+/// Los juegos están serializados empezando por `canonicalId`, así que se parsea
+/// desde esa marca. Trocear los segmentos por bytes no ASCII descartaba
+/// cualquier título con acentos o símbolos.
+fn read_games(bytes: &[u8]) -> Vec<HydraGame> {
+    const MARKER: &str = "{\"canonicalId\"";
+    const MAX_OBJECT: usize = 16 * 1024;
+
     let text = String::from_utf8_lossy(bytes);
     let mut games = Vec::new();
-    for chunk in printable_chunks(&text) {
-        if !chunk.contains("\"objectId\"") || !chunk.contains("\"executablePath\"") {
-            continue;
-        }
-        for (index, _) in chunk.match_indices('{') {
-            let mut stream =
-                serde_json::Deserializer::from_str(&chunk[index..]).into_iter::<Value>();
-            if let Some(Ok(value)) = stream.next() {
-                if let Some(game) = to_game(&value) {
-                    games.push(game);
-                }
+    let mut search = 0;
+    while let Some(found) = text[search..].find(MARKER) {
+        let start = search + found;
+        search = start + MARKER.len();
+        let end = (start + MAX_OBJECT).min(text.len());
+        let slice = text.get(start..end).unwrap_or(&text[start..]);
+        let mut stream = serde_json::Deserializer::from_str(slice).into_iter::<Value>();
+        if let Some(Ok(value)) = stream.next() {
+            if let Some(game) = to_entry(&value) {
+                games.push(game);
             }
         }
     }
     games
 }
 
-fn printable_chunks(text: &str) -> impl Iterator<Item = &str> {
-    text.split(|c: char| !c.is_ascii_graphic() && c != ' ')
-        .filter(|chunk| chunk.len() > 32)
-}
-
-fn to_game(value: &Value) -> Option<Game> {
+fn to_entry(value: &Value) -> Option<HydraGame> {
     let title = value.get("title")?.as_str()?.to_string();
     let object_id = value.get("objectId")?.as_str()?.to_string();
     let shop = value.get("shop").and_then(Value::as_str).unwrap_or("hydra");
@@ -87,27 +153,58 @@ fn to_game(value: &Value) -> Option<Game> {
     if !executable.is_file() {
         return None;
     }
-    let install_dir = executable.parent()?.to_path_buf();
+
+    Some(HydraGame {
+        wine_prefix: path_field(value, "winePrefixPath").filter(|p| p.is_dir()),
+        proton_path: path_field(value, "protonPath"),
+        steam_shortcut: value
+            .get("steamShortcutAppId")
+            .and_then(Value::as_u64)
+            .and_then(|id| u32::try_from(id).ok()),
+        object_id,
+        shop: shop.to_string(),
+        title,
+        executable,
+        playtime_min: value
+            .get("playTimeInMilliseconds")
+            .and_then(Value::as_f64)
+            .map(|ms| (ms / 60_000.0) as u64)
+            .unwrap_or(0),
+        last_played: value
+            .get("lastTimePlayed")
+            .and_then(Value::as_str)
+            .and_then(parse_timestamp),
+    })
+}
+
+fn path_field(value: &Value, key: &str) -> Option<PathBuf> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(PathBuf::from)
+}
+
+fn to_game(entry: HydraGame) -> Game {
+    let install_dir = entry
+        .executable
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_default();
 
     let mut game = Game::new(
-        format!("hydra:{shop}:{object_id}"),
-        title,
+        format!("hydra:{}:{}", entry.shop, entry.object_id),
+        entry.title,
         Source::Hydra,
         install_dir,
     );
-    game.app_id = object_id.parse().ok();
-    game.platform = detect_platform(Some(&executable));
-    game.executable = Some(executable);
-    game.playtime_min = value
-        .get("playTimeInMilliseconds")
-        .and_then(Value::as_f64)
-        .map(|ms| (ms / 60_000.0) as u64)
-        .unwrap_or(0);
-    game.last_played = value
-        .get("lastTimePlayed")
-        .and_then(Value::as_str)
-        .and_then(parse_timestamp);
-    Some(game)
+    game.app_id = entry.object_id.parse().ok();
+    game.platform = detect_platform(Some(&entry.executable));
+    game.executable = Some(entry.executable);
+    game.playtime_min = entry.playtime_min;
+    game.last_played = entry.last_played;
+    game
 }
 
 /// `2026-11-23T05:43:51.712Z` a segundos UNIX.
@@ -134,3 +231,4 @@ fn parse_timestamp(raw: &str) -> Option<i64> {
 
     Some(days * 86_400 + hour * 3_600 + minute * 60 + second as i64)
 }
+
